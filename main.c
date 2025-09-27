@@ -12,9 +12,22 @@ DEF_DARRAY(u8, 8);
 typedef u8_Slice Str;
 typedef const char* Cstr;
 typedef u8_Darray Str_Builder;
+DEF_SLICE(Str);
 Str str_slice(Str str, size_t begin, size_t end){
   if(nullptr == str.data || begin >= end || end > str.count) return (Str){ 0 };
   return (Str){ .data = str.data + begin, .count = end - begin };
+}
+int str_str_cmp(Str str1, Str str2){
+  const size_t l = _min(str1.count, str2.count);
+  int v = strncmp(str1.data, str2.data, l);
+  if(v != 0) return v;
+  return (int)(str1.count - l) - (int)(str2.count - l);
+}
+int str_cstr_cmp(Str str1, Cstr str2){
+  return str_str_cmp(str1, (Str){.data=(void*)str2,.count=strlen(str2)});
+}
+int cstr_str_cmp(Cstr str1, Str str2){
+  return str_str_cmp((Str){.data=(void*)str1,.count=strlen(str1)},str2);
 }
 
 #define slice_shrink_front(slice_iden, amt)	\
@@ -58,7 +71,7 @@ bool parse_as_wasm_index(Parse_Node* node, u32* output){
 bool parse_as_type_index(Parse_Node* typ_idx, u32* out_idx){
   // There must be exactly 1 child
   if(!typ_idx || typ_idx->children.count != 1) return false;
-  if(strncmp(typ_idx->data.data, "type", typ_idx->data.count) != 0) return false;
+  if(str_cstr_cmp(typ_idx->data, "type") != 0) return false;
   // Verify that the node is with one leaf 
   Parse_Node* child = typ_idx->children.data[0];
   if(!child || child->children.count != 0) return false;

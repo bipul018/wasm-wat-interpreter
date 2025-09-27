@@ -98,7 +98,7 @@ Parse_Node* parse_brackets_(Parse_Info* parser, Str* curr_file){
     *curr_file = skip_whitespace(*curr_file);
     // Exit when bracket end
     const u8 ch = slice_first(*curr_file);
-    if(ch == 0) goto error_happened; // TODO:: report error with file location
+    if(ch == 0) goto error_happened;
     if(ch == ')'){
       *curr_file = str_slice(*curr_file, 1, curr_file->count);
       break;
