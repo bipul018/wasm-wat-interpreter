@@ -17,6 +17,18 @@ Str str_slice(Str str, size_t begin, size_t end){
   return (Str){ .data = str.data + begin, .count = end - begin };
 }
 
+#define slice_shrink_front(slice_iden, amt)	\
+  do{						\
+    if((slice_iden).count < amt) {		\
+      (slice_iden).data = nullptr;		\
+      (slice_iden).count = 0;			\
+      break;					\
+    }						\
+    (slice_iden).count -= amt;			\
+    (slice_iden).data += amt;			\
+  }while(0)
+  
+
 #define str_print(str) ((int)(str).count), (str).data
 #include "lines_and_files.h"
 #include "parse_node.h"
@@ -24,7 +36,10 @@ Str str_slice(Str str, size_t begin, size_t end){
 
 // Actual 'parsing'
 
-bool parse_as_wasm_index(Str input, u32* output){
+// Ensures that the node has no children also 
+bool parse_as_wasm_index(Parse_Node* node, u32* output){
+  if(!node || node->children.count != 0) return false;
+  Str input = node->data;
   if(input.count == 0) return false;
   if(input.data[0] != ';') return false;
   input = str_slice(input, 1, input.count);
@@ -41,7 +56,7 @@ DEF_SLICE(Parse_Node_Ptr);
 
 #include "parsed_type.h"
 
-
+/*
 // Func "func" : something used directly inside the module
 // Tries to follow the behavior of the module
 typedef struct Func Func;
@@ -113,7 +128,7 @@ void try_printing_func(const Func* func){
   }
   printf("\n");
 }
-
+*/
 
 #include "parsed_module.h"
 

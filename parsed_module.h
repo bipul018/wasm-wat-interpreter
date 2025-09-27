@@ -27,57 +27,49 @@ int compare_type_idx(const void* a, const void* b){
   return 1;
 }
 
+// Lets parse the module like we dont care about other ones, so a 'standard' way
+
+
 bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
   if(!root || !mod || !root->data.data) return false;
   if(strncmp(root->data.data, "module", root->data.count) != 0) return false;
   mod->identifier = root->data;
 
+  // Simply copy the entities if you can parse the entity
+  // And convert into a slice from the dynamic array
+
+  // Collect the rest into an unknown array
 
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
   Type_Darray types = init_Type_darray(allocr);
 
-  // First make a duplicate darray
   for_slice(root->children, i){
     Parse_Node* child = root->children.data[i];
-    bool res = push_Parse_Node_Ptr_darray(&unknowns, child);
-    if(!res) {
-      fprintf(stderr, "Couldnt allocate memory!!!\n");
-      goto was_error;
-    }
-  }
-
-  // Now, parse types, if any entry matches, remove it from the 'unknowns'
-  for_slice(unknowns, i){
-    Parse_Node* child = unknowns.data[i];
     Type typ = {0};
     if(parse_type(allocr, child, &typ)){
       if(!push_Type_darray(&types, typ)){
-	fprintf(stderr, "Couldnt allocate memory!!!\n");
+	fprintf(stderr, "Couldnt allocate memory !!!\n");
 	goto was_error;
       }
-      (void)downsize_Parse_Node_Ptr_darray(&unknowns, i, 1);
-      i--;
+    }
+    else{
+      if(!push_Parse_Node_Ptr_darray(&unknowns, child)){
+	fprintf(stderr, "Couldnt allocate memory !!!\n");
+	goto was_error;
+      }
     }
   }
-  // Sort to ensure all the 'idx' match the types
-  qsort(types.data, types.count, sizeof(Type), compare_type_idx);
 
-  // We can just 'take ownership' from a darray to a slice
-  mod->unknowns = (Parse_Node_Ptr_Slice){
-    .data = unknowns.data,
-    .count = unknowns.count,
-  };
-  // Similar 'transfer of ownership' for other knowns
-  mod->types = (Type_Slice){
-    .data = types.data,
-    .count = types.count
-  };
+  // Reuse the darrays directly as slices
+  mod->types = (Type_Slice){ .data = types.data, .count = types.count };
+  mod->unknowns = (Parse_Node_Ptr_Slice){.data = unknowns.data, .count = unknowns.count};
   return true;
  was_error:
   (void)resize_Parse_Node_Ptr_darray(&unknowns, 0);
   (void)resize_Type_darray(&types, 0);
   return false;
 }
+
 // Only prints the heads of unknown ones
 void try_printing_module(const Module* mod){
   printf("The module identifier: %.*s\n", str_print(mod->identifier));

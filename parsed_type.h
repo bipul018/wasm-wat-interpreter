@@ -20,35 +20,42 @@ bool parse_type(Alloc_Interface allocr, Parse_Node* root, Type* typ){
   if(strncmp(root->data.data, "type", root->data.count) != 0) return false;
   typ->identifier = root->data;
 
-  Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
-  // First make a duplicate darray
-  for_slice(root->children, i){
-    Parse_Node* child = root->children.data[i];
-    bool res = push_Parse_Node_Ptr_darray(&unknowns, child);
-    if(!res) {
-      fprintf(stderr, "Couldnt allocate memory!!!\n");
-      goto was_error;
-    }
-  }
+  // Get a modifiable slice, they will be resliced to be consumed
+  Parse_Node_Ptr_Slice children = {
+    .data = root->children.data,
+    .count = root->children.count,
+  };
 
-  // Now try to parse items from the duplicate array
+  Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
+
+  // The first entry must be a index
   u32 idx;
-  if(unknowns.count == 0 || // idx must exist
-     slice_first(unknowns)->children.count != 0 || // no children in idx node
-     !parse_as_wasm_index(slice_first(unknowns)->data, &idx)){
+  if(children.count == 0 || // idx must exist
+     !parse_as_wasm_index(slice_first(children), &idx)){
     fprintf(stderr, "Invalid type node");
     goto was_error;
   }
-  (void)downsize_Parse_Node_Ptr_darray(&unknowns, 0, 1);
   typ->idx = idx;
+  slice_shrink_front(children, 1);
 
-  // Insert the next parse node as the type data
-  if(unknowns.count == 0) {
-    fprintf(stderr, "No type data found");
+
+  // The next entry should be type data (I think)
+  if(children.count == 0) {
+    fprintf(stderr, "No type data found\n");
     goto was_error;
   }
-  typ->type_data = slice_first(unknowns);
-  (void)downsize_Parse_Node_Ptr_darray(&unknowns, 0, 1);
+  typ->type_data = slice_first(children);
+  slice_shrink_front(children, 1);
+
+  for_slice(children, i){
+    Parse_Node* child = children.data[i];
+    {
+      if(!push_Parse_Node_Ptr_darray(&unknowns, child)){
+	fprintf(stderr, "Couldnt allocate memory !!!\n");
+	goto was_error;
+      }
+    }
+  }
   
   // We can just 'take ownership' from a darray to a slice
   typ->unknowns = (Parse_Node_Ptr_Slice){
