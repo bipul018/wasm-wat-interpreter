@@ -13,6 +13,7 @@ typedef u8_Slice Str;
 typedef const char* Cstr;
 typedef u8_Darray Str_Builder;
 DEF_SLICE(Str);
+DEF_DARRAY(Str, 8);
 Str str_slice(Str str, size_t begin, size_t end){
   if(nullptr == str.data || begin >= end || end > str.count) return (Str){ 0 };
   return (Str){ .data = str.data + begin, .count = end - begin };
