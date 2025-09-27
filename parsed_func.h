@@ -10,7 +10,8 @@ struct Func {
   Str identifier;
   u32 idx; // Preferably used in the parent container to store in a linear array
   u32 type_idx; // Used to later index into by the parent to do whatever
-  // Parse_Node* func_data; // Not yet parsed, but something to be referred
+  // Currently assuming all parameter types are of leaf node types
+  Str_Slice param_idents; // TODO:: intern all these identifiers someday
   // There should be no unknowns here
   Parse_Node_Ptr_Slice unknowns;
 };
@@ -20,11 +21,12 @@ DEF_SLICE(Func);
 // At least the func's type will be referred to there for now
 bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
   if(!root || !func || !root->data.data) return false;
-  if(strncmp(root->data.data, "func", root->data.count) != 0) return false;
+  if(str_cstr_cmp(root->data, "func") != 0) return false;
   func->identifier = root->data;
 
 
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
+  Str_Slice params = {0};
 
   // Get a modifiable slice, they will be resliced to be consumed
   Parse_Node_Ptr_Slice children = {
@@ -48,6 +50,35 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
   }
   slice_shrink_front(children, 1);
 
+  // Next node must be a parameter type node, and all its children must be leaves
+  if(children.count == 0){
+    fprintf(stderr, "No parameter list was found\n");
+    goto was_error;
+  }
+  // Parse the parameter list
+  {
+    Parse_Node* param_node = slice_first(children);
+    if(str_cstr_cmp(param_node->data, "param") != 0){
+      fprintf(stderr, "Expected `param`, found `%.*s`\n", str_print(param_node->data));
+      goto was_error;
+    }
+    params = SLICE_ALLOC(allocr, Str, param_node->children.count);
+    if(!params.data){
+      fprintf(stderr, "Could not allocate\n");
+      goto was_error;
+    }
+    for_slice(param_node->children, i){
+      Parse_Node* ch = slice_inx(param_node->children, i);
+      if(ch->children.count != 0){
+	fprintf(stderr, "Expected leaf node as param, found %zu grandchild of %.*s\n",
+		ch->children.count, str_print(ch->data));
+	goto was_error;
+      }
+      slice_inx(params, i) = ch->data;
+    }
+  }
+  slice_shrink_front(children, 1);
+
   for_slice(children, i){
     Parse_Node* child = children.data[i];
     {
@@ -63,10 +94,12 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
     .data = unknowns.data,
     .count = unknowns.count,
   };
+  func->param_idents = params;
   // Similar 'transfer of ownership' for other knowns
   return true;
  was_error:
   (void)resize_Parse_Node_Ptr_darray(&unknowns, 0);
+  if(params.data) SLICE_FREE(allocr, params);
   return false;
 }
 // Only prints the heads of unknown ones
@@ -74,7 +107,11 @@ void try_printing_func(const Func* func){
   printf("The func identifier: %.*s\n", str_print(func->identifier));
   printf("The func[%u] is of type indexed %u\n",
 	 (unsigned)func->idx, (unsigned)func->type_idx);
-  printf("The func has %zu unknowns: ", func->unknowns.count);
+  printf("The func takes %zu parameters of types : ", func->param_idents.count);
+  for_slice(func->param_idents, i){
+    printf("%.*s ", str_print(func->param_idents.data[i]));
+  }
+  printf("\nThe func has %zu unknowns: ", func->unknowns.count);
   for_slice(func->unknowns, i){
     printf("[%zu: %.*s] ", i, str_print(func->unknowns.data[i]->data));
   }
