@@ -12,7 +12,9 @@ struct Func {
   u32 type_idx; // Used to later index into by the parent to do whatever
   // Currently assuming all parameter types are of leaf node types
   Str_Slice param_idents; // TODO:: intern all these identifiers someday
-  // There should be no unknowns here
+  Str result_iden; // TODO:: also intern this
+  
+  // There should be no unknowns here (I think)
   Parse_Node_Ptr_Slice unknowns;
 };
 DEF_DARRAY(Func, 1);
@@ -50,18 +52,14 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
   }
   slice_shrink_front(children, 1);
 
-  // Next node must be a parameter type node, and all its children must be leaves
-  if(children.count == 0){
-    fprintf(stderr, "No parameter list was found\n");
-    goto was_error;
-  }
+  // Parameter list is optional
+  
+  // TODO:: Later remove this parameter and result parsing so that
+  //        type definition can also reuse the logic for parsing
   // Parse the parameter list
-  {
+  if(children.count != 0 &&
+     str_cstr_cmp(slice_first(children)->data, "param") == 0){
     Parse_Node* param_node = slice_first(children);
-    if(str_cstr_cmp(param_node->data, "param") != 0){
-      fprintf(stderr, "Expected `param`, found `%.*s`\n", str_print(param_node->data));
-      goto was_error;
-    }
     params = SLICE_ALLOC(allocr, Str, param_node->children.count);
     if(!params.data){
       fprintf(stderr, "Could not allocate\n");
@@ -76,8 +74,28 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
       }
       slice_inx(params, i) = ch->data;
     }
+    slice_shrink_front(children, 1);
   }
-  slice_shrink_front(children, 1);
+
+  // Now parse the return type
+  if(children.count != 0 &&
+     str_cstr_cmp(slice_first(children)->data, "result") == 0){
+    // TODO:: find if return type can have multiple values
+    Parse_Node* param_node = slice_first(children);
+    if(param_node->children.count != 1){
+      fprintf(stderr, "Expected exactly 1 child in result node, found %zu\n",
+	      param_node->children.count);
+      goto was_error;
+    }
+    Parse_Node* leaf = slice_inx(param_node->children,0);
+    if(leaf->children.count != 0){
+      fprintf(stderr, "Expected a leaf node as result type, found %zu grandkids\n",
+	      leaf->children.count);
+      goto was_error;
+    }
+    func->result_iden = leaf->data;
+    slice_shrink_front(children, 1);
+  }
 
   for_slice(children, i){
     Parse_Node* child = children.data[i];
@@ -111,7 +129,8 @@ void try_printing_func(const Func* func){
   for_slice(func->param_idents, i){
     printf("%.*s ", str_print(func->param_idents.data[i]));
   }
-  printf("\nThe func has %zu unknowns: ", func->unknowns.count);
+  printf("And returns %.*s\n", str_print(func->result_iden));
+  printf("The func has %zu unknowns: ", func->unknowns.count);
   for_slice(func->unknowns, i){
     printf("[%zu: %.*s] ", i, str_print(func->unknowns.data[i]->data));
   }
