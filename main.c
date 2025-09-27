@@ -88,6 +88,17 @@ bool parse_as_type_index(Parse_Node* typ_idx, u32* out_idx){
   return true;
 }
 
+// Does not do escaping
+bool parse_as_string(Parse_Node* str_node, Str* out_str){
+  // There must be no child
+  if(!out_str || str_node->children.count != 0) return false;
+  if(str_node->data.count <= 1) return false;
+  if(slice_first(str_node->data) != '"') return false;
+  if(slice_last(str_node->data) != '"') return false;
+  *out_str = str_slice(str_node->data, 1, str_node->data.count-1);
+  return true;
+}
+
 
 DEF_SLICE(Parse_Node_Ptr);
 
