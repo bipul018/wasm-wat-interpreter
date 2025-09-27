@@ -15,6 +15,7 @@ struct Func {
   Str result_iden; // TODO:: also intern this
   
   // There should be no unknowns here (I think)
+  Str_Slice opcodes;
   Parse_Node_Ptr_Slice unknowns;
 };
 DEF_DARRAY(Func, 1);
@@ -27,8 +28,9 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
   func->identifier = root->data;
 
 
-  Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
   Str_Slice params = {0};
+  Str_Darray opcodes = init_Str_darray(allocr);
+  Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
 
   // Get a modifiable slice, they will be resliced to be consumed
   Parse_Node_Ptr_Slice children = {
@@ -97,9 +99,21 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
     slice_shrink_front(children, 1);
   }
 
+  // As long as there are leaves, record them
+  bool normal = true;
   for_slice(children, i){
     Parse_Node* child = children.data[i];
-    {
+    if(normal){
+      if(child->children.count != 0){
+	normal = false;
+      } else {
+	if(!push_Str_darray(&opcodes, child->data)){
+	  fprintf(stderr, "Couldnt allocate memory !!!\n");
+	  goto was_error;
+	}
+      }
+    }
+    if(!normal){
       if(!push_Parse_Node_Ptr_darray(&unknowns, child)){
 	fprintf(stderr, "Couldnt allocate memory !!!\n");
 	goto was_error;
@@ -112,10 +126,15 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
     .data = unknowns.data,
     .count = unknowns.count,
   };
+  func->opcodes = (Str_Slice){
+    .data = opcodes.data,
+    .count = opcodes.count
+  };
   func->param_idents = params;
   // Similar 'transfer of ownership' for other knowns
   return true;
  was_error:
+  (void)resize_Str_darray(&opcodes, 0);
   (void)resize_Parse_Node_Ptr_darray(&unknowns, 0);
   if(params.data) SLICE_FREE(allocr, params);
   return false;
@@ -130,6 +149,7 @@ void try_printing_func(const Func* func){
     printf("%.*s ", str_print(func->param_idents.data[i]));
   }
   printf("And returns %.*s\n", str_print(func->result_iden));
+  printf("The function consists of %zu opcodes\n", func->opcodes.count);
   printf("The func has %zu unknowns: ", func->unknowns.count);
   for_slice(func->unknowns, i){
     printf("[%zu: %.*s] ", i, str_print(func->unknowns.data[i]->data));
