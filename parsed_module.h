@@ -9,6 +9,7 @@ typedef struct Module Module;
 struct Module {
   Str identifier;
   Type_Slice types;
+  Func_Slice funcs;
   // All the unknown children are saved here, which at the beginning, is all of them
   // The data inside these will directly refer to the parser,
   //  So, they will be valid only until then
@@ -42,12 +43,20 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
 
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
   Type_Darray types = init_Type_darray(allocr);
+  Func_Darray funcs = init_Func_darray(allocr);
 
   for_slice(root->children, i){
     Parse_Node* child = root->children.data[i];
     Type typ = {0};
+    Func func = {0};
     if(parse_type(allocr, child, &typ)){
       if(!push_Type_darray(&types, typ)){
+	fprintf(stderr, "Couldnt allocate memory !!!\n");
+	goto was_error;
+      }
+    }
+    else if(parse_func(allocr, child, &func)){
+      if(!push_Func_darray(&funcs, func)){
 	fprintf(stderr, "Couldnt allocate memory !!!\n");
 	goto was_error;
       }
@@ -61,12 +70,14 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
   }
 
   // Reuse the darrays directly as slices
-  mod->types = (Type_Slice){ .data = types.data, .count = types.count };
+  mod->types = (Type_Slice){.data = types.data, .count = types.count};
+  mod->funcs = (Func_Slice){.data = funcs.data, .count = funcs.count};
   mod->unknowns = (Parse_Node_Ptr_Slice){.data = unknowns.data, .count = unknowns.count};
   return true;
  was_error:
   (void)resize_Parse_Node_Ptr_darray(&unknowns, 0);
   (void)resize_Type_darray(&types, 0);
+  (void)resize_Func_darray(&funcs, 0);
   return false;
 }
 
@@ -77,6 +88,11 @@ void try_printing_module(const Module* mod){
   for_slice(mod->types, i){
     printf("%zu: ", i);
     try_printing_type(mod->types.data + i);
+  }
+  printf("The module has %zu functions: \n", mod->funcs.count);
+  for_slice(mod->funcs, i){
+    printf("%zu: ", i);
+    try_printing_func(mod->funcs.data + i);
   }
   printf("The module has %zu unknowns: ", mod->unknowns.count);
   for_slice(mod->unknowns, i){
