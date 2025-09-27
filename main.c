@@ -36,6 +36,8 @@ Str str_slice(Str str, size_t begin, size_t end){
 
 // Actual 'parsing'
 
+
+// TODO:: In the following helper functions, maybe add more error reporting
 // Ensures that the node has no children also 
 bool parse_as_wasm_index(Parse_Node* node, u32* output){
   if(!node || node->children.count != 0) return false;
@@ -44,6 +46,7 @@ bool parse_as_wasm_index(Parse_Node* node, u32* output){
   if(input.data[0] != ';') return false;
   input = str_slice(input, 1, input.count);
   char* endptr = input.data;
+  // TODO:: Is this safe?
   long long v = strtoll(endptr, &endptr, 0);
   if(endptr == (void*)input.data || v < 0) return false;
   input = str_slice(input, (u8*)endptr-input.data, input.count);
@@ -52,17 +55,38 @@ bool parse_as_wasm_index(Parse_Node* node, u32* output){
   return true;
 }
 
+bool parse_as_type_index(Parse_Node* typ_idx, u32* out_idx){
+  // There must be exactly 1 child
+  if(!typ_idx || typ_idx->children.count != 1) return false;
+  if(strncmp(typ_idx->data.data, "type", typ_idx->data.count) != 0) return false;
+  // Verify that the node is with one leaf 
+  Parse_Node* child = typ_idx->children.data[0];
+  if(!child || child->children.count != 0) return false;
+  Str num = child->data;
+  if(num.count == 0) return false;
+  char* endptr = num.data;
+  // TODO:: Is this safe?
+  long long v = strtoll(endptr, &endptr, 0);
+  num = str_slice(num, (u8*)endptr-num.data, num.count);
+  // There should only be the number in the data field, this means, `num` is depleted
+  if(num.data || v < 0) return false;
+  *out_idx = (u32) v;
+  return true;
+}
+
+
 DEF_SLICE(Parse_Node_Ptr);
 
 #include "parsed_type.h"
 
-/*
+
 // Func "func" : something used directly inside the module
 // Tries to follow the behavior of the module
 typedef struct Func Func;
 struct Func {
   Str identifier;
   u32 idx; // Preferably used in the parent container to store in a linear array
+  u32 type_idx; // Used to later index into by the parent to do whatever
   // Parse_Node* func_data; // Not yet parsed, but something to be referred
   // There should be no unknowns here
   Parse_Node_Ptr_Slice unknowns;
@@ -71,44 +95,49 @@ DEF_DARRAY(Func, 1);
 DEF_SLICE(Func);
 // Parsing a func will require the type array
 // At least the func's type will be referred to there for now
-bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func, Type_Slice types){
+bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
   if(!root || !func || !root->data.data) return false;
   if(strncmp(root->data.data, "func", root->data.count) != 0) return false;
   func->identifier = root->data;
 
+
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
-  // First make a duplicate darray
-  for_slice(root->children, i){
-    Parse_Node* child = root->children.data[i];
-    bool res = push_Parse_Node_Ptr_darray(&unknowns, child);
-    if(!res) {
-      fprintf(stderr, "Couldnt allocate memory!!!\n");
-      goto was_error;
+
+  // Get a modifiable slice, they will be resliced to be consumed
+  Parse_Node_Ptr_Slice children = {
+    .data = root->children.data,
+    .count = root->children.count,
+  };
+
+  // The first entry must be own index
+  if(children.count == 0 || // idx must exist
+     !parse_as_wasm_index(slice_first(children), &func->idx)){
+    fprintf(stderr, "No function index found");
+    goto was_error;
+  }
+  slice_shrink_front(children, 1);
+
+  // Now the type index must be found
+  if(children.count == 0 ||
+     !parse_as_type_index(slice_first(children), &func->type_idx)) {
+    fprintf(stderr, "No type index found\n");
+    goto was_error;
+  }
+  slice_shrink_front(children, 1);
+
+  for_slice(children, i){
+    Parse_Node* child = children.data[i];
+    {
+      if(!push_Parse_Node_Ptr_darray(&unknowns, child)){
+	fprintf(stderr, "Couldnt allocate memory !!!\n");
+	goto was_error;
+      }
     }
   }
-
-  // Now try to parse items from the duplicate array
-  u32 idx;
-  if(unknowns.count == 0 || // idx must exist
-     slice_first(unknowns)->children.count != 0 || // no children in idx node
-     !parse_as_wasm_index(slice_first(unknowns)->data, &idx)){
-    fprintf(stderr, "Invalid func node");
-    goto was_error;
-  }
-  (void)downsize_Parse_Node_Ptr_darray(&unknowns, 0, 1);
-  func->idx = idx;
-
-  // Insert the next parse node as the func data
-  if(unknowns.count == 0) {
-    fprintf(stderr, "No func data found");
-    goto was_error;
-  }
-  func->func_data = slice_first(unknowns);
-  (void)downsize_Parse_Node_Ptr_darray(&unknowns, 0, 1);
   
   // We can just 'take ownership' from a darray to a slice
   func->unknowns = (Parse_Node_Ptr_Slice){
-    .data = unknowns.data,p
+    .data = unknowns.data,
     .count = unknowns.count,
   };
   // Similar 'transfer of ownership' for other knowns
@@ -120,15 +149,15 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func, Type_Slice
 // Only prints the heads of unknown ones
 void try_printing_func(const Func* func){
   printf("The func identifier: %.*s\n", str_print(func->identifier));
-  printf("The func index is %u and is a `%.*s`.\n",
-	 (unsigned)func->idx, str_print(func->func_data->data));
+  printf("The func[%u] is of type indexed %u\n",
+	 (unsigned)func->idx, (unsigned)func->type_idx);
   printf("The func has %zu unknowns: ", func->unknowns.count);
   for_slice(func->unknowns, i){
     printf("[%zu: %.*s] ", i, str_print(func->unknowns.data[i]->data));
   }
   printf("\n");
 }
-*/
+
 
 #include "parsed_module.h"
 
