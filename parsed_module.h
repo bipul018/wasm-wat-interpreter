@@ -21,16 +21,18 @@ struct Module {
 // Thus, some other mechanism is needed
 // Like, first do some check if compatible, then
 
-int compare_type_idx(const void* a, const void* b){
-  const Type* t1 = a;
-  const Type* t2 = b;
-  if(t1->idx < t2->idx) return -1;
-  if(t1->idx == t2->idx) return 0; // this should never actually happen
+int compare_type_idx(const void* a, const void* b, void* idx_offset){
+  const uptr off = (uptr)idx_offset;
+
+  const size_t* idx1 = (size_t*)((u8*)a + off);
+  const size_t* idx2 = (size_t*)((u8*)b + off);  
+
+  if(*idx1 < *idx2) return -1;
+  if(*idx1 == *idx2) return 0; // this should never actually happen
   return 1;
 }
 
 // Lets parse the module like we dont care about other ones, so a 'standard' way
-
 
 bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
   if(!root || !mod || !root->data.data) return false;
@@ -78,11 +80,41 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
     }
   }
 
+  // Sort `types` `funcs` by their index
+  // Verify that they are consecutive (maybe error if not found so)
+  // TODO:: Probably a GNU only thing, might need to find alternative maybe
+  // MAYBE ASSERT WITH `_GNU_SOURCE` macro ?
+#define sort_by_idx(slice)						\
+  qsort_r((slice).data, (slice).count, sizeof((slice).data[0]),		\
+	  compare_type_idx,						\
+	  (void*)((u8*)(&(slice).data[0].idx) - (u8*)(&(slice).data[0])))
+  (void)sort_by_idx(types);
+  (void)sort_by_idx(funcs);
+#undef sort_by_idx
+
+#define check_sequentiality(field)					\
+  do{									\
+    for_slice((field), i){						\
+      if((field).data[i].idx != i){					\
+	fprintf(stderr, "Module "#field" arent laid sequentially,"	\
+		"expected %zu, got %zu\n",				\
+		i, (size_t)(field).data[i].idx);			\
+	goto was_error;							\
+      }									\
+    }									\
+  }while(0)
+
+  check_sequentiality(types);
+  check_sequentiality(funcs);
+
+#undef check_sequentiality
   // Reuse the darrays directly as slices
   mod->types = (Type_Slice){.data = types.data, .count = types.count};
   mod->funcs = (Func_Slice){.data = funcs.data, .count = funcs.count};
   mod->unknowns = (Parse_Node_Ptr_Slice){.data = unknowns.data, .count = unknowns.count};
   mod->exports = (Export_Slice){.data=exports.data, .count=exports.count};
+
+
   return true;
  was_error:
   (void)resize_Export_darray(&exports, 0);
