@@ -58,262 +58,7 @@ int cstr_str_cmp(Cstr str1, Str str2){
 
 // Try to run a given function
 // Assume all the functions are ordered correctly ?
-
-// Nothing is type safe
-DEF_SLICE(u64);
-DEF_DARRAY(u64, 16); // Maybe initialize this according to module parameters later
-// Only prints as u64 array
-void print_stack(u64_Slice stk){
-  printf("[ ");
-  for_slice(stk, i){
-    printf("%llu ", (unsigned long long)slice_inx(stk, i));
-  }
-  printf(" ]");
-}
-#define printf_stk(stk, ...)				\
-  do{							\
-    printf(__VA_ARGS__);				\
-    print_stack(_Generic(stk,				\
-			 u64_Slice: (stk),		\
-			 u64_Darray: (u64_Slice){	\
-			   .data=(stk).data,		\
-			   .count=(stk).count,		\
-			 }));				\
-    printf("\n");					\
-  }while(0)
-
-// A lazily built memory for wasm ?
-// Idea: Each memory index will be mapped to pages that can be lazily
-//   allocated and realized on read or write operation?
-#define MEMORY_PAGE_SIZE_POWER 16
-#define MEMORY_PAGE_SIZE (1 << MEMORY_PAGE_SIZE_POWER) // Ensure that its always power of two
-// Ensure that you never ever not access this without reference
-// TODO:: Find out if this is a good strategy??
-typedef struct Memory_Page Memory_Page;
-struct Memory_Page {
-  size_t inx; // The `page_index` for this memory page, not actual offset
-  u8 data[MEMORY_PAGE_SIZE];
-};
-typedef Memory_Page* Memory_Page_Ptr;
-DEF_DARRAY(Memory_Page_Ptr,1);
-typedef struct Memory_Region Memory_Region;
-struct Memory_Region {
-  Memory_Page_Ptr_Darray pages;
-  // For cache/optimization purposes :
-  //   really just conceptual, to show that this struct
-  //   can contain some metadata if needed
-  size_t latest_page;
-};
-
-Memory_Region memory_rgn_init(Alloc_Interface allocr){
-  return (Memory_Region){ .pages = init_Memory_Page_Ptr_darray(allocr) };
-}
-
-void memory_rgn_deinit(Memory_Region* mem){
-  if(!mem) return;
-  for_slice(mem->pages, i){
-    Memory_Page* page = slice_inx(mem->pages, i);
-    free_mem(mem->pages.allocr, page);
-  }
-  (void)resize_Memory_Page_Ptr_darray(&mem->pages, 0);
-  *mem = (Memory_Region){0};
-}
-
-// Utility to get the number of memory pages required
-size_t memory_rgn_num_pages(size_t off, size_t size){
-  if(size == 0) return 0;
-  size_t inx_start = _align_down(off, MEMORY_PAGE_SIZE)/MEMORY_PAGE_SIZE;
-  size_t inx_end = _align_up(off+size,MEMORY_PAGE_SIZE)/MEMORY_PAGE_SIZE;
-  return (inx_end-inx_start);
-}
-
-// utility to 'get' the memory page given the offset
-Memory_Page* memory_rgn_get_page(Memory_Region* mem, size_t page_inx){
-  // Assumes that the memory page exists always
-  if(mem->pages.count && page_inx == slice_inx(mem->pages, mem->latest_page)->inx){
-    return slice_inx(mem->pages, mem->latest_page);
-  }
-  for_slice(mem->pages, i){
-    if(slice_inx(mem->pages, i)->inx == page_inx){
-      mem->latest_page = i;
-      return slice_inx(mem->pages, i);
-    }
-  }
-  return nullptr;
-}
-
-typedef struct Memory_Page_Iter Memory_Page_Iter;
-struct Memory_Page_Iter {
-  size_t iteration, pages, curr_off, size, page_inx, page_off, page_size;
-};
-
-Memory_Page_Iter memory_rgn_iter_init(size_t off, size_t size){
-  Memory_Page_Iter res = {
-    .iteration = 0,
-    .pages = memory_rgn_num_pages(off, size),
-    .curr_off = off,
-    .size = size,
-    .page_inx = _align_down(off, MEMORY_PAGE_SIZE)/MEMORY_PAGE_SIZE,
-    .page_off = off - _align_down(off, MEMORY_PAGE_SIZE),
-  };
-  res.page_size = _min(size, MEMORY_PAGE_SIZE-res.page_off);
-  return res;
-}
-bool memory_rgn_iter(Memory_Page_Iter* mem_iter){
-  // Whether to end or not is determined by iteration number
-  if(mem_iter->iteration >= mem_iter->pages) return false;
-  mem_iter->iteration++;
-  // Now, set the options so as they are valid
-  //   we need, page index, page offset and page size to accurately represent the
-  //   ongoing iteration, everything else is ignorable
-  if(mem_iter->iteration != 1) {
-    mem_iter->size -= MEMORY_PAGE_SIZE-mem_iter->page_off;
-    mem_iter->curr_off += MEMORY_PAGE_SIZE;
-
-    mem_iter->page_inx++;
-    mem_iter->page_off = 0;
-    mem_iter->page_size = _min(mem_iter->size, MEMORY_PAGE_SIZE);
-  }
-  return true;
-}
-
-// Ensures that the memory range is available
-bool memory_rgn_ensure(Memory_Region* mem, size_t off, size_t size){
-  Memory_Page_Iter iter = memory_rgn_iter_init(off, size);
-  while(memory_rgn_iter(&iter)){
-    // Search for the page_inx in mem
-    for_slice(mem->pages, i){
-      Memory_Page* pg = slice_inx(mem->pages, i);
-      if(pg->inx == iter.page_inx){
-	goto found_this_page;
-      }
-    }
-    // Didnot find that page, need to allocate it
-    Memory_Page* mem_page = alloc_mem(mem->pages.allocr, sizeof(Memory_Page),
-				      alignof(Memory_Page));
-    if(!mem_page) return false;
-    if(!push_Memory_Page_Ptr_darray(&mem->pages, mem_page)){
-      free_mem(mem->pages.allocr, mem_page);
-      return false;
-    }
-    // TODO:: Maybe memset some values ?
-    mem_page->inx = iter.page_inx;
-  found_this_page:
-  }
-  return true;
-}
-
-void memory_rgn_read(Memory_Region* mem, size_t off, size_t size, void* out){
-  // First ensure that those memory region exist
-  // TODO:: Assert false or do something else maybe?
-  if(!out || !memory_rgn_ensure(mem, off, size)) return;
-  // Then iterate over them and try to read somehow
-  Memory_Page_Iter iter = memory_rgn_iter_init(off, size);
-  while(memory_rgn_iter(&iter)){
-    Memory_Page* page = memory_rgn_get_page(mem, iter.page_inx);
-    assert(page);
-    memcpy(out, page->data+iter.page_off, iter.page_size);
-    out += iter.page_size;
-  }
-}
-void memory_rgn_write(Memory_Region* mem, size_t off, size_t size, const void* in){
-  // First ensure that those memory region exist
-  // TODO:: Assert false or do something else maybe?
-  if(!in || !memory_rgn_ensure(mem, off, size)) return;
-
-  // Then iterate over them and try to write somehow
-  Memory_Page_Iter iter = memory_rgn_iter_init(off, size);
-  while(memory_rgn_iter(&iter)){
-    Memory_Page* page = memory_rgn_get_page(mem, iter.page_inx);
-    assert(page);
-    memcpy(page->data+iter.page_off, in, iter.page_size);
-    in += iter.page_size;
-  }
-}
-
-// Sample run for memory page
-void run_memory_page_sample(Alloc_Interface allocr){
-  printf("------------------ Memory Region Tests ---------------\n");
-
-  printf("     Testing some memory region calculation\n");
-  const size_t qs[][2] = {
-    {0,0}, {0,1}, {MEMORY_PAGE_SIZE-1,1}, {0,MEMORY_PAGE_SIZE-1},
-    {0,MEMORY_PAGE_SIZE}, {MEMORY_PAGE_SIZE/2,MEMORY_PAGE_SIZE},
-    {MEMORY_PAGE_SIZE/2,MEMORY_PAGE_SIZE+1},
-    {MEMORY_PAGE_SIZE,0},{MEMORY_PAGE_SIZE,1},{MEMORY_PAGE_SIZE,2},
-    {MEMORY_PAGE_SIZE-1,0},{MEMORY_PAGE_SIZE-1,1},{MEMORY_PAGE_SIZE-1,2},
-  };
-  for_range(size_t, i, 0, _countof(qs)){
-    printf("For off = %zu, size = %zu, memory count = %zu\n",
-  	   qs[i][0], qs[i][1], memory_rgn_num_pages(qs[i][0], qs[i][1]));
-  }
-
-
-  Memory_Region mem = memory_rgn_init(allocr);
-
-#define print_pages()							\
-  do{									\
-    printf("There are %zu pages: [ ", mem.pages.count);			\
-    for_slice(mem.pages, i) printf("%zu ", slice_inx(mem.pages, i)->inx); \
-    printf(" ]\n");							\
-  }while(0)
-#define ensure_pages(off, sz)						\
-  do{									\
-    printf("Ensuring memory from %zu ... %zu(%zu)\n", (size_t)(off), (size_t)((sz)+(off)),(size_t)(sz)); \
-    if(memory_rgn_ensure(&mem, (off), (sz))) printf("         --Ensured\n"); \
-    else printf("         --Could not ensure\n");			\
-    print_pages();							\
-  }while(0)
-
-
-  print_pages();
-  //ensure_pages(0, 1);
-  //ensure_pages(0, MEMORY_PAGE_SIZE);
-  //ensure_pages(0, MEMORY_PAGE_SIZE+1);
-  ensure_pages(MEMORY_PAGE_SIZE*10+1000, MEMORY_PAGE_SIZE-100);
-  ensure_pages(MEMORY_PAGE_SIZE*50+1000, MEMORY_PAGE_SIZE*2-999);
-
-  u8 buffer[1024] = {0};
-
-#define write_to_pages(str, offset)					\
-  do{									\
-    printf("Writing `%s` at %zu(from page %zu)...\n",			\
-	   (str), (size_t)(offset),					\
-	   (size_t)_align_down((size_t)(offset),MEMORY_PAGE_SIZE)/MEMORY_PAGE_SIZE); \
-    memory_rgn_write(&mem, (offset), strlen((str)), (str));		\
-    print_pages();							\
-  }while(0)
-  
-  write_to_pages("hello, world!!!", 100);
-
-#define read_from_pages(off, len)					\
-  do{									\
-    printf("Reading %zu bytes from %zu (page %zu)...\n",		\
-	   (size_t)(len), (size_t)(off),				\
-	   (size_t)_align_down((size_t)(off),MEMORY_PAGE_SIZE)/MEMORY_PAGE_SIZE); \
-    memory_rgn_read(&mem, off, len, buffer);				\
-    printf("[ ");							\
-    for_range(size_t, i, 0, len) {					\
-      if(isgraph(buffer[i])) printf("%c ", buffer[i]);			\
-      else printf("%02x ", buffer[i]);					\
-    }									\
-    printf(" ]\n");							\
-    print_pages();							\
-  }while(0)
-
-  read_from_pages(95, 30);
-
-  read_from_pages(MEMORY_PAGE_SIZE*2-10, 20);
-
-  write_to_pages("Wassap, page 1 and page 2 ?", MEMORY_PAGE_SIZE*5-10);
-  read_from_pages(MEMORY_PAGE_SIZE*5-15, 35);
-
-#undef ensure_pages
-#undef print_pages
-  memory_rgn_deinit(&mem);
-  printf("------------------------------------------------------\n");
-}
-
+#include "stk_n_mems.h"
 
 typedef struct Wasm_Data Wasm_Data;
 struct Wasm_Data {
@@ -340,7 +85,7 @@ const Cstr wasm_names[] = {
 void run_sample(Alloc_Interface allocr, Module* mod){
   // Memory leaks are happening here
   u64_Darray stk = init_u64_darray(allocr);
-  
+  Memory_Region mem = memory_rgn_init(allocr);
 
 #define pushstk(v)					\
   do{							\
@@ -409,7 +154,8 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   // TODO:: Care about the result ?
   // Go through the opcodes?
   for_slice(func->opcodes, i){
-    printf_stk(stk, "At opcode %zu : ", i);
+    printf_stk(stk, "Before opcode %zu (%.*s) : ",
+	       i, str_print(slice_inx(func->opcodes, i)));
     const Str op = slice_inx(func->opcodes, i);
     if(str_cstr_cmp(op, "local.get") == 0){
       i++; // maybe verify that its not ended yet ??
@@ -446,11 +192,50 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       Wasm_Data p = {0};
       p.di32 = v;
       pushstk(p.du64);
+    } else if (str_cstr_cmp(op, "i32.load") == 0){
+      i++;
+      Str oparg = slice_inx(func->opcodes, i);
+      // Parse the offset, for now, dont expect alignment
+      Cstr name = "offset=";
+      // Expect this at the first, then parse
+      Str pref = str_slice(oparg, 0, strlen(name));
+      if(cstr_str_cmp(name, pref) != 0){
+	fprintf(stderr, "Cannot process anything other than `offset=<u32>`"
+	       " for i32.load, found `%.*s`\n", str_print(pref));
+	return;
+      }
+      oparg = str_slice(oparg, strlen(name), oparg.count);
+      u64 off;
+      if(!parse_as_u64(oparg, &off)){
+	fprintf(stderr, "Cannot process anything other than `offset=<u32>`"
+	       " for i32.load, found `%.*s`\n", str_print(pref));
+	return;
+      }
+
+      // Pop value add offset and load 4 bytes and push it
+      Wasm_Data base = {0};
+      popstk(base.du64);
+      s64 offset = base.di32;
+      offset += off;
+
+      // This offset is the data
+      s32 data = 69;
+      memory_rgn_read(&mem, offset, sizeof(data), &data);
+      // Now push it
+      base = (Wasm_Data){0};
+      base.di32 = data;
+      pushstk(base.du64);
+    } else if (str_cstr_cmp(op, "i32.add") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 + p0.di32;
+      pushstk(r.du64);
     } else {
       fprintf(stderr, "TODO:: Implement opcode `%.*s`\n", str_print(op));
       return;
     }
   }
+  printf_stk(stk, "After function execution : ");
 
   
 
@@ -495,7 +280,7 @@ int main(void){
 
   run_memory_page_sample(allocr);
 
-  //run_sample(allocr, &main_module);
+  run_sample(allocr, &main_module);
 
   
 
