@@ -104,7 +104,7 @@ DEF_SLICE(Parse_Node_Ptr);
 
 #include "parsed_type.h"
 #include "parsed_func.h"
-
+#include "parsed_exports.h" 
 #include "parsed_module.h"
 
 int main(void){
