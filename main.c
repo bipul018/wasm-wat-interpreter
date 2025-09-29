@@ -193,30 +193,32 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       p.di32 = v;
       pushstk(p.du64);
     } else if (str_cstr_cmp(op, "i32.load") == 0){
+      // In this case, lets pop stack value first before seeing arguments
+      Wasm_Data base = {0};
+      popstk(base.du64);
+      s64 offset = base.di32; //The memory address to load from
+
       i++;
       Str oparg = slice_inx(func->opcodes, i);
       // Parse the offset, for now, dont expect alignment
       Cstr name = "offset=";
       // Expect this at the first, then parse
       Str pref = str_slice(oparg, 0, strlen(name));
-      if(cstr_str_cmp(name, pref) != 0){
-	fprintf(stderr, "Cannot process anything other than `offset=<u32>`"
-	       " for i32.load, found `%.*s`\n", str_print(pref));
-	return;
+      // The offset=<>;alignmeht=<>; might be optional, so, for now
+      //  If the next op name doesnt begin with offset=, treat it as missing
+      if(cstr_str_cmp(name, pref) == 0){
+	oparg = str_slice(oparg, strlen(name), oparg.count);
+	u64 off;
+	if(!parse_as_u64(oparg, &off)){
+	  fprintf(stderr, "Cannot process anything other than `offset=<u32>`"
+		  " for i32.load, found `%.*s`\n", str_print(pref));
+	  return;
+	}
+	// Adding the constant offset 
+	offset += off;
+      } else {
+	i--; 
       }
-      oparg = str_slice(oparg, strlen(name), oparg.count);
-      u64 off;
-      if(!parse_as_u64(oparg, &off)){
-	fprintf(stderr, "Cannot process anything other than `offset=<u32>`"
-	       " for i32.load, found `%.*s`\n", str_print(pref));
-	return;
-      }
-
-      // Pop value add offset and load 4 bytes and push it
-      Wasm_Data base = {0};
-      popstk(base.du64);
-      s64 offset = base.di32;
-      offset += off;
 
       // This offset is the data
       s32 data = 69;
@@ -230,7 +232,12 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 + p0.di32;
       pushstk(r.du64);
-    } else {
+    } else if (str_cstr_cmp(op, "i32.shl") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 << p0.di32; // TODO:: Find out if the expected behavior matches
+      pushstk(r.du64);
+    }else {
       fprintf(stderr, "TODO:: Implement opcode `%.*s`\n", str_print(op));
       return;
     }
