@@ -54,6 +54,7 @@ int cstr_str_cmp(Cstr str1, Str str2){
 #include "parsed_type.h"
 #include "parsed_func.h"
 #include "parsed_exports.h" 
+#include "parsed_data.h"
 #include "parsed_module.h"
 
 // Try to run a given function
