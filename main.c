@@ -61,6 +61,42 @@ int cstr_str_cmp(Cstr str1, Str str2){
 // Assume all the functions are ordered correctly ?
 #include "stk_n_mems.h"
 
+// Load a partiucular data section
+bool load_data_to_memory(Memory_Region* mem, const Data* data_sec){
+  assert(mem && data_sec && data_sec->offset_expr /* Only active data sections */);
+
+  // Parse the offset expression
+  const Parse_Node* off_expr = data_sec->offset_expr;
+  if(str_cstr_cmp(off_expr->data, "i32.const") != 0){
+    fprintf(stderr, "Expected data section offset expression to be of `i32.const`"
+	    ", found `%.*s` instead\n", str_print(off_expr->data));
+    return false;
+  }
+  if(off_expr->children.count != 1 ||
+     slice_first(off_expr->children)->children.count != 0){
+    fprintf(stderr, "Expected a data section offset expression only consisting a"
+	    "single i32.const value, found `%.*s` instead",
+	    str_print(slice_first(off_expr->children)->data));
+    return false;
+  }
+  const Str num = slice_first(off_expr->children)->data;
+  s64 off;
+  // TODO:: Find out if >= 0 checking is good,
+  //        The type is 'i32' but offset should be positive no?
+  if(!parse_as_s64(num, &off) || off < 0){
+    fprintf(stderr, "Couldnt parse `%.*s` as a unsigned integer offset value\n",
+	    str_print(num));
+    return false;
+  }
+
+  if(!memory_rgn_write(mem, off, data_sec->raw_bytes.count, data_sec->raw_bytes.data)){
+    fprintf(stderr, "Couldnt initialize data segment %zu\n", (size_t)data_sec->idx);
+    return false;
+  }
+  return true;
+}
+
+
 typedef struct Wasm_Data Wasm_Data;
 struct Wasm_Data {
   enum {
@@ -110,6 +146,12 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   }while(0)
   
 
+  for_slice(mod->data_sections, i){
+    printf("Initializing the memory with data section %zu...\n", i);
+    if(!load_data_to_memory(&mem, mod->data_sections.data+i)){
+      printf("   ... Loading data section at %zu failed!!!\n", i);
+    }
+  }
 
   printf_stk(stk, "The current stack is : ");
 
@@ -284,9 +326,9 @@ int main(void){
     printf("Couldnt parse the main module!!!\n");
     return 1;
   }
-  try_printing_module(&main_module);
+  //try_printing_module(&main_module);
 
-  run_memory_page_sample(allocr);
+  //run_memory_page_sample(allocr);
 
   run_sample(allocr, &main_module);
 
