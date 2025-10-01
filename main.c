@@ -129,6 +129,7 @@ const Cstr wasm_names[] = {
   [WASM_DATA_F32] = "f32",
   [WASM_DATA_U64] = "u64",
 };
+DEF_SLICE(Wasm_Data);
 
 void run_sample(Alloc_Interface allocr, Module* mod){
   // Memory leaks are happening here
@@ -166,11 +167,7 @@ void run_sample(Alloc_Interface allocr, Module* mod){
 
   // Choose a fxn
   Cstr fxn = "add";
-  // List the args
-  Wasm_Data args[] = {
-    {.tag = WASM_DATA_I32, .di32 = 420},
-    {.tag = WASM_DATA_I32, .di32 = 351},
-  };
+
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;
   for_slice(mod->exports, i){
@@ -189,23 +186,46 @@ void run_sample(Alloc_Interface allocr, Module* mod){
     return;
   }
   const Func* func = mod->funcs.data + finx;
-  // Validate the parameter count and return type
-  if(func->param_count != _countof(args)){
-    fprintf(stderr, "Trying to feed %zu args for a function of %zuarity\n",
-	    _countof(args), func->param_count);
-    return;
-  }
-  for_slice(func->local_vars, i){
-    if(i >= func->param_count) break;
-    Str pt = slice_inx(func->local_vars, i);
-    if(cstr_str_cmp(wasm_names[args[i].tag], pt) != 0){
-      fprintf(stderr, "Expected arg %zu to be of type `%.*s`, found `%s`\n",
-	      i, str_print(pt), wasm_names[args[i].tag]);
+
+  // Instead of forming a predetermined list of args,
+  // Need to allocate an array of data representing each of
+  //   local variables (including parameters) then initialize those
+  //   representing parameters with the arguments
+  /*Wasm_Data args[] = {
+    {.tag = WASM_DATA_I32, .di32 = 420},
+    {.tag = WASM_DATA_I32, .di32 = 351},
+    };*/
+  Wasm_Data_Slice vars = SLICE_ALLOC(allocr, Wasm_Data, func->local_vars.count);
+  // Validate and initialize the parameters
+  {
+    // Localized arguments to not leak them 
+    Wasm_Data args[] = {
+    {.tag = WASM_DATA_I32, .di32 = 420},
+    {.tag = WASM_DATA_I32, .di32 = 351},
+    };
+
+    if(func->param_count != _countof(args)){
+      fprintf(stderr, "Trying to feed %zu args for a function of %zuarity\n",
+    	    _countof(args), func->param_count);
       return;
     }
+    
+    for_slice(func->local_vars, i){
+      if(i >= func->param_count) break;
+      Str pt = slice_inx(func->local_vars, i);
+      if(cstr_str_cmp(wasm_names[args[i].tag], pt) != 0){
+	fprintf(stderr, "Expected arg %zu to be of type `%.*s`, found `%s`\n",
+		i, str_print(pt), wasm_names[args[i].tag]);
+	return;
+      }
+      slice_inx(vars, i) = args[i];
+    }
   }
+
+  
+  
   printf_stk(stk, "The current stack is : ");
-  printf("The initial memory is : \n    ");
+  printf("\nThe initial memory is : \n    ");
   memory_rgn_dump(&mem);
   printf("\n");
 
@@ -214,6 +234,7 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   for_slice(func->opcodes, i){
     const Str op = slice_inx(func->opcodes, i);
     if(str_cstr_cmp(op, "local.get") == 0){
+      // TODO:: Find if there is some better way of validating types
       i++; // maybe verify that its not ended yet ??
       u64 inx;
       if(!parse_as_u64(slice_inx(func->opcodes, i), &inx)){
@@ -223,15 +244,16 @@ void run_sample(Alloc_Interface allocr, Module* mod){
 	return;
       }
       // See if the index exists
-      if(inx >= _countof(args)){
+      if(inx >= vars.count){
 	// TODO:: Also print location of source code
-	fprintf(stderr, "Tried to access %zu-th arg when only %zu args are present\n",
-		inx, _countof(args));
+	fprintf(stderr, "Tried to access %zu-th var when only %zu vars are present\n",
+		inx, vars.count);
 	return;
       }
       // Arguments are validated already
-      pushstk(args[inx].du64);
+      pushstk(slice_inx(vars, inx).du64);
     } else if (str_cstr_cmp(op, "local.tee") == 0){
+      // TODO:: Find if theres some better way of validating types
       i++; // maybe verify that its not ended yet ??
       u64 inx;
       if(!parse_as_u64(slice_inx(func->opcodes, i), &inx)){
@@ -241,20 +263,15 @@ void run_sample(Alloc_Interface allocr, Module* mod){
 	return;
       }
       // See if the index exists
-      if(inx >= _countof(args)){
+      if(inx >= vars.count){
 	// TODO:: Also print location of source code
-	fprintf(stderr, "Tried to access %zu-th arg when only %zu args are present\n",
-		inx, _countof(args));
+	fprintf(stderr, "Tried to access %zu-th var when only %zu vars are present\n",
+		inx, vars.count);
 	return;
       }
       // Arguments are validated already
       // Get the value from stack without popping and push it
-      args[inx].du64 = slice_last(stk); // TODO:: Maybe implement actual local variable
-    } else if (str_cstr_cmp(op, "i32.sub") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 - p0.di32;
-      pushstk(r.du64);
+      slice_inx(vars,inx).du64 = slice_last(stk); // TODO:: Maybe implement actual local variable
     } else if (str_cstr_cmp(op, "i32.const") == 0){
       i++; // maybe verify that its not ended yet ??
       s64 v;
@@ -338,6 +355,11 @@ void run_sample(Alloc_Interface allocr, Module* mod){
 
       // Now simply store the data 
       (void)memory_rgn_write(&mem, offset, sizeof(to_store.di32), &to_store.di32);
+    } else if (str_cstr_cmp(op, "i32.sub") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 - p0.di32;
+      pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.add") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -348,6 +370,11 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 << p0.di32; // TODO:: Find out if the expected behavior matches
       pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.mul") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 * p0.di32;
+      pushstk(r.du64);
     } else {
       fprintf(stderr, "TODO:: Implement opcode `%.*s`\n", str_print(op));
       return;
@@ -355,12 +382,27 @@ void run_sample(Alloc_Interface allocr, Module* mod){
 
     printf_stk(stk, "After opcode %zu (%.*s) : ",
 	       i, str_print(op));
+    printf("  { ");
+    for_slice(vars, i){
+      const Wasm_Data d = slice_inx(vars,i);
+      printf("%s(", wasm_names[d.tag]);
+      switch(d.tag){
+      case WASM_DATA_I32: {printf("%ld", (long)d.di32); break;}
+      case WASM_DATA_U32: {printf("%lu", (unsigned long)d.du32); break;}
+      case WASM_DATA_F32: {printf("%f", (float)d.df32); break;}
+      case WASM_DATA_U64: {printf("%llu", (long long unsigned)d.du64); break;}
+      }
+      printf(") ");
+    }
+    printf("}\n");
+
     if(match_str_suffix(op, cstr_to_str("load")) || 
        match_str_suffix(op, cstr_to_str("store"))){
       printf("    ");
       memory_rgn_dump(&mem);
       printf("\n");
     }
+    
   }
   printf_stk(stk, "After function execution : ");
 

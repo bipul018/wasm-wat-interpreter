@@ -23,7 +23,6 @@ void print_stack(u64_Slice stk){
 			   .data=(stk).data,		\
 			   .count=(stk).count,		\
 			 }));				\
-    printf("\n");					\
   }while(0)
 
 // A lazily built memory for wasm ?
