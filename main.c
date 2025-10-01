@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <stdlib.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <ctype.h>
 
@@ -31,6 +32,16 @@ int str_cstr_cmp(Str str1, Cstr str2){
 }
 int cstr_str_cmp(Cstr str1, Str str2){
   return str_str_cmp((Str){.data=(void*)str1,.count=strlen(str1)},str2);
+}
+Str cstr_to_str(Cstr str){
+  return (Str){.data = (void*)str, .count = strlen(str)};
+}
+bool match_str_prefix(Str haystack, Str needle){
+  return str_str_cmp(needle, str_slice(haystack, 0, needle.count)) == 0;
+}
+bool match_str_suffix(Str haystack, Str needle){
+  if(haystack.count<needle.count) return false;
+  return str_str_cmp(needle, str_slice(haystack, haystack.count-needle.count, haystack.count)) == 0;
 }
 
 #define slice_shrink_front(slice_iden, amt)	\
@@ -153,14 +164,12 @@ void run_sample(Alloc_Interface allocr, Module* mod){
     }
   }
 
-  printf_stk(stk, "The current stack is : ");
-
   // Choose a fxn
   Cstr fxn = "add";
   // List the args
   Wasm_Data args[] = {
-    {.tag = WASM_DATA_I32, .di32 = 35},
-    {.tag = WASM_DATA_I32, .di32 = 34},
+    {.tag = WASM_DATA_I32, .di32 = 420},
+    {.tag = WASM_DATA_I32, .di32 = 351},
   };
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;
@@ -194,11 +203,14 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       return;
     }
   }
+  printf_stk(stk, "The current stack is : ");
+  printf("The initial memory is : \n    ");
+  memory_rgn_dump(&mem);
+  printf("\n");
+
   // TODO:: Care about the result ?
   // Go through the opcodes?
   for_slice(func->opcodes, i){
-    printf_stk(stk, "Before opcode %zu (%.*s) : ",
-	       i, str_print(slice_inx(func->opcodes, i)));
     const Str op = slice_inx(func->opcodes, i);
     if(str_cstr_cmp(op, "local.get") == 0){
       i++; // maybe verify that its not ended yet ??
@@ -218,6 +230,25 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       }
       // Arguments are validated already
       pushstk(args[inx].du64);
+    } else if (str_cstr_cmp(op, "local.tee") == 0){
+      i++; // maybe verify that its not ended yet ??
+      u64 inx;
+      if(!parse_as_u64(slice_inx(func->opcodes, i), &inx)){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+		i, str_print(slice_inx(func->opcodes, i)));
+	return;
+      }
+      // See if the index exists
+      if(inx >= _countof(args)){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Tried to access %zu-th arg when only %zu args are present\n",
+		inx, _countof(args));
+	return;
+      }
+      // Arguments are validated already
+      // Get the value from stack without popping and push it
+      args[inx].du64 = slice_last(stk); // TODO:: Maybe implement actual local variable
     } else if (str_cstr_cmp(op, "i32.sub") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -270,6 +301,42 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       base = (Wasm_Data){0};
       base.di32 = data;
       pushstk(base.du64);
+    } else if (str_cstr_cmp(op, "i32.store") == 0){
+      // During storage, the stack at top contains the data, then the
+      //   dynamic offset where to store, other format of the instruction is same
+      //   so, copy-pasting is almost okay for store and load
+      Wasm_Data to_store = {0};
+      popstk(to_store.du64);
+      
+      // In this case, lets pop stack value first before seeing arguments
+      Wasm_Data base = {0};
+      popstk(base.du64);
+      s64 offset = base.di32; //The memory address to store to
+
+      i++;
+      Str oparg = slice_inx(func->opcodes, i);
+      // Parse the offset, for now, dont expect alignment
+      Cstr name = "offset=";
+      // Expect this at the first, then parse
+      Str pref = str_slice(oparg, 0, strlen(name));
+      // The offset=<>;alignmeht=<>; might be optional, so, for now
+      //  If the next op name doesnt begin with offset=, treat it as missing
+      if(cstr_str_cmp(name, pref) == 0){
+	oparg = str_slice(oparg, strlen(name), oparg.count);
+	u64 off;
+	if(!parse_as_u64(oparg, &off)){
+	  fprintf(stderr, "Cannot process anything other than `offset=<u32>`"
+		  " for i32.store, found `%.*s`\n", str_print(pref));
+	  return;
+	}
+	// Adding the constant offset 
+	offset += off;
+      } else {
+	i--; 
+      }
+
+      // Now simply store the data 
+      (void)memory_rgn_write(&mem, offset, sizeof(to_store.di32), &to_store.di32);
     } else if (str_cstr_cmp(op, "i32.add") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -280,9 +347,18 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 << p0.di32; // TODO:: Find out if the expected behavior matches
       pushstk(r.du64);
-    }else {
+    } else {
       fprintf(stderr, "TODO:: Implement opcode `%.*s`\n", str_print(op));
       return;
+    }
+
+    printf_stk(stk, "After opcode %zu (%.*s) : ",
+	       i, str_print(op));
+    if(match_str_suffix(op, cstr_to_str("load")) || 
+       match_str_suffix(op, cstr_to_str("store"))){
+      printf("    ");
+      memory_rgn_dump(&mem);
+      printf("\n");
     }
   }
   printf_stk(stk, "After function execution : ");

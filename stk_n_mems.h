@@ -39,6 +39,7 @@ struct Memory_Page {
   u8 data[MEMORY_PAGE_SIZE];
 };
 typedef Memory_Page* Memory_Page_Ptr;
+DEF_SLICE(Memory_Page_Ptr);
 DEF_DARRAY(Memory_Page_Ptr,1);
 typedef struct Memory_Region Memory_Region;
 struct Memory_Region {
@@ -176,6 +177,42 @@ bool memory_rgn_write(Memory_Region* mem, size_t off, size_t size, const void* i
     in += iter.page_size;
   }
   return true;
+}
+
+int compare_memory_pages(const void* a, const void* b){
+  const Memory_Page** pa = (void*)a;
+  const Memory_Page** pb = (void*)b;
+  return compare_type_idx(*pa, *pb, offsetof(Memory_Page, inx));
+}
+void memory_rgn_dump(Memory_Region* mem){
+  // Go sequentially in pages?
+  Alloc_Interface allocr = gen_std_allocator(); // TODO:: Remove this
+  Memory_Page_Ptr_Slice dup = make_copy_Memory_Page_Ptr_slice
+    (allocr, (Memory_Page_Ptr_Slice){.data=mem->pages.data, mem->pages.count});
+  if(!dup.data) return;
+  qsort(dup.data, dup.count, sizeof(dup.data[0]), compare_memory_pages);
+
+  for_slice(dup, i){
+    printf("Memory page %zu (%zx-%zx): ", dup.data[i]->inx,
+	   dup.data[i]->inx * MEMORY_PAGE_SIZE,
+	   (1+dup.data[i]->inx) * MEMORY_PAGE_SIZE);
+    
+    Memory_Page* page = dup.data[i];
+    for_range(size_t, i, 0, MEMORY_PAGE_SIZE){
+      const u8 byt = page->data[i];
+      // Collect the indexes with the same byte,
+      size_t count = 0;
+      while((i+count) < MEMORY_PAGE_SIZE && byt == page->data[i+count]) count++;
+      i += count - 1;
+      if(isgraph(byt)) printf("%c", byt);
+      else printf("%02x", byt);
+      if(count > 1){
+	printf("(x%zu) ", count);
+      } else {
+	printf(" ");
+      }
+    }
+  }
 }
 
 // Sample run for memory page
