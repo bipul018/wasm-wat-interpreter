@@ -148,32 +148,34 @@ bool memory_rgn_ensure(Memory_Region* mem, size_t off, size_t size){
   return true;
 }
 
-void memory_rgn_read(Memory_Region* mem, size_t off, size_t size, void* out){
+bool memory_rgn_read(Memory_Region* mem, size_t off, size_t size, void* out){
   // First ensure that those memory region exist
   // TODO:: Assert false or do something else maybe?
-  if(!out || !memory_rgn_ensure(mem, off, size)) return;
+  if(!out || !memory_rgn_ensure(mem, off, size)) return false;
   // Then iterate over them and try to read somehow
   Memory_Page_Iter iter = memory_rgn_iter_init(off, size);
   while(memory_rgn_iter(&iter)){
     Memory_Page* page = memory_rgn_get_page(mem, iter.page_inx);
-    assert(page);
+    if(!page) return false;
     memcpy(out, page->data+iter.page_off, iter.page_size);
     out += iter.page_size;
   }
+  return true;
 }
-void memory_rgn_write(Memory_Region* mem, size_t off, size_t size, const void* in){
+bool memory_rgn_write(Memory_Region* mem, size_t off, size_t size, const void* in){
   // First ensure that those memory region exist
   // TODO:: Assert false or do something else maybe?
-  if(!in || !memory_rgn_ensure(mem, off, size)) return;
+  if(!in || !memory_rgn_ensure(mem, off, size)) return false;
 
   // Then iterate over them and try to write somehow
   Memory_Page_Iter iter = memory_rgn_iter_init(off, size);
   while(memory_rgn_iter(&iter)){
     Memory_Page* page = memory_rgn_get_page(mem, iter.page_inx);
-    assert(page);
+    if(!page) return false;
     memcpy(page->data+iter.page_off, in, iter.page_size);
     in += iter.page_size;
   }
+  return true;
 }
 
 // Sample run for memory page
