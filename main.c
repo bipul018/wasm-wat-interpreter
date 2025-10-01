@@ -174,7 +174,7 @@ void run_sample(Alloc_Interface allocr, Module* mod){
     const Export expt = slice_inx(mod->exports, i);
     if(str_cstr_cmp(expt.name, fxn) == 0 &&
        expt.export_type == FUNCTION_EXPORT_TYPE){
-      finx = i;
+      finx = expt.export_idx;
       goto found_the_fxn;
     }
   }
