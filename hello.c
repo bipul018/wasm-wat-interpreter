@@ -6,7 +6,7 @@ int add(int a, int b) {
 int sub(int a, int b) {
   int c = a - b;
   v[a] = c;
-  int d = c + v[0]+v[a];
+  int d = c -a*b + v[0]+v[a];
   return d;
 }
 

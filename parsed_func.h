@@ -11,9 +11,12 @@ struct Func {
   u32 idx; // Preferably used in the parent container to store in a linear array
   u32 type_idx; // Used to later index into by the parent to do whatever
   // Currently assuming all parameter types are of leaf node types
-  Str_Slice param_idents; // TODO:: intern all these identifiers someday
+  // Following three things represent only the types, access by index
+  //Str_Slice param_idents; // TODO:: intern all these identifiers someday
   Str result_iden; // TODO:: also intern this
-  
+  Str_Slice local_vars; // ?Maybe this also consists of the parameters?
+  size_t param_count; // The first this many items of local_vars are actually parameters
+
   // There should be no unknowns here (I think)
   Str_Slice opcodes;
   Parse_Node_Ptr_Slice unknowns;
@@ -27,8 +30,7 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
   if(str_cstr_cmp(root->data, "func") != 0) return false;
   func->identifier = root->data;
 
-
-  Str_Slice params = {0};
+  Str_Darray local_vars = {.allocr=allocr};
   Str_Darray opcodes = init_Str_darray(allocr);
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
 
@@ -62,11 +64,6 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
   if(children.count != 0 &&
      str_cstr_cmp(slice_first(children)->data, "param") == 0){
     Parse_Node* param_node = slice_first(children);
-    params = SLICE_ALLOC(allocr, Str, param_node->children.count);
-    if(!params.data){
-      fprintf(stderr, "Could not allocate\n");
-      goto was_error;
-    }
     for_slice(param_node->children, i){
       Parse_Node* ch = slice_inx(param_node->children, i);
       if(ch->children.count != 0){
@@ -74,10 +71,14 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
 		ch->children.count, str_print(ch->data));
 	goto was_error;
       }
-      slice_inx(params, i) = ch->data;
+      if(!push_Str_darray(&local_vars, ch->data)){
+	fprintf(stderr, "Could not allocate!!!\n");
+	goto was_error;
+      }
     }
     slice_shrink_front(children, 1);
   }
+  func->param_count = local_vars.count;
 
   // Now parse the return type
   if(children.count != 0 &&
@@ -96,6 +97,25 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
       goto was_error;
     }
     func->result_iden = leaf->data;
+    slice_shrink_front(children, 1);
+  }
+
+  // Parse the local vars, they are also optional
+  if(children.count != 0 &&
+     str_cstr_cmp(slice_first(children)->data, "local") == 0){
+    Parse_Node* param_node = slice_first(children);
+    for_slice(param_node->children, i){
+      Parse_Node* ch = slice_inx(param_node->children, i);
+      if(ch->children.count != 0){
+	fprintf(stderr, "Expected leaf node as param, found %zu grandchild of %.*s\n",
+		ch->children.count, str_print(ch->data));
+	goto was_error;
+      }
+      if(!push_Str_darray(&local_vars, ch->data)){
+	fprintf(stderr, "Could not allocate!!!\n");
+	goto was_error;
+      }
+    }
     slice_shrink_front(children, 1);
   }
 
@@ -130,13 +150,17 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
     .data = opcodes.data,
     .count = opcodes.count
   };
-  func->param_idents = params;
+  func->local_vars = (Str_Slice){
+    .data = local_vars.data,
+    .count = local_vars.count,
+  };
   // Similar 'transfer of ownership' for other knowns
   return true;
  was_error:
+  (void)resize_Str_darray(&local_vars, 0);
   (void)resize_Str_darray(&opcodes, 0);
   (void)resize_Parse_Node_Ptr_darray(&unknowns, 0);
-  if(params.data) SLICE_FREE(allocr, params);
+  if(local_vars.data) SLICE_FREE(allocr, local_vars);
   return false;
 }
 // Only prints the heads of unknown ones
@@ -144,11 +168,20 @@ void try_printing_func(const Func* func){
   printf("The func identifier: %.*s\n", str_print(func->identifier));
   printf("The func[%u] is of type indexed %u\n",
 	 (unsigned)func->idx, (unsigned)func->type_idx);
-  printf("The func takes %zu parameters of types : ", func->param_idents.count);
-  for_slice(func->param_idents, i){
-    printf("%.*s ", str_print(func->param_idents.data[i]));
+  // Printing the parameters and return types and local vars in a pretty from
+  printf("( ");
+  for_slice(func->local_vars, i){
+    if(i >= func->param_count) break;
+    printf("%.*s ", str_print(func->local_vars.data[i]));
   }
-  printf("And returns %.*s\n", str_print(func->result_iden));
+  printf(" ) -> %.*s { ", str_print(func->result_iden));
+  for_slice(func->local_vars, i){
+    if(i < func->param_count) continue;
+    printf("%.*s ", str_print(func->local_vars.data[i]));
+  }
+  printf(" }\n");
+
+  
   printf("The function consists of %zu opcodes\n", func->opcodes.count);
   printf("The func has %zu unknowns: ", func->unknowns.count);
   for_slice(func->unknowns, i){

@@ -190,13 +190,14 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   }
   const Func* func = mod->funcs.data + finx;
   // Validate the parameter count and return type
-  if(func->param_idents.count != _countof(args)){
+  if(func->param_count != _countof(args)){
     fprintf(stderr, "Trying to feed %zu args for a function of %zuarity\n",
-	    _countof(args), func->param_idents.count);
+	    _countof(args), func->param_count);
     return;
   }
-  for_slice(func->param_idents, i){
-    Str pt = slice_inx(func->param_idents, i);
+  for_slice(func->local_vars, i){
+    if(i >= func->param_count) break;
+    Str pt = slice_inx(func->local_vars, i);
     if(cstr_str_cmp(wasm_names[args[i].tag], pt) != 0){
       fprintf(stderr, "Expected arg %zu to be of type `%.*s`, found `%s`\n",
 	      i, str_print(pt), wasm_names[args[i].tag]);
@@ -402,7 +403,7 @@ int main(void){
     printf("Couldnt parse the main module!!!\n");
     return 1;
   }
-  //try_printing_module(&main_module);
+  try_printing_module(&main_module);
 
   //run_memory_page_sample(allocr);
 
