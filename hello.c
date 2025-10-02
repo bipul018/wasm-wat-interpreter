@@ -9,7 +9,25 @@ int sub(int a, int b) {
   int d = c -a*b + v[0]+v[a];
   return d;
 }
-
+//int fibo(int n){
+//  int a0 = 0;
+//  int a1 = 1;
+//
+//  while(n > 0){
+//    n--;
+//    int c = a0 + a1;
+//    a0 = a1;
+//    a1 = c;
+//  }
+//  return a0;
+//}
+int abs_diff(int x, int y){
+  if(x > y) {
+    return x - y;
+  } else {
+    return y - x;
+  }
+}
 //int sub2(int a, int b) {
 //  v = a * b;
 //  return v + a;

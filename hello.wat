@@ -26,9 +26,22 @@
     i32.const 0
     i32.load offset=1048576
     i32.add)
+  (func (;2;) (type 0) (param i32 i32) (result i32)
+    local.get 0
+    local.get 1
+    i32.sub
+    local.tee 1
+    local.get 1
+    i32.const 31
+    i32.shr_s
+    local.tee 1
+    i32.xor
+    local.get 1
+    i32.sub)
   (memory (;0;) 17)
   (global (;0;) (mut i32) (i32.const 1048576))
   (export "memory" (memory 0))
   (export "add" (func 0))
   (export "sub" (func 1))
+  (export "abs_diff" (func 2))
   (data (;0;) (i32.const 1048576) "'\22\00\002\00\00\003\00\00\004\00\00\005\00\00\00"))

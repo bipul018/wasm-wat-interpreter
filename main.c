@@ -166,7 +166,7 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   }
 
   // Choose a fxn
-  Cstr fxn = "add";
+  Cstr fxn = "abs_diff";
 
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;
@@ -191,17 +191,13 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   // Need to allocate an array of data representing each of
   //   local variables (including parameters) then initialize those
   //   representing parameters with the arguments
-  /*Wasm_Data args[] = {
-    {.tag = WASM_DATA_I32, .di32 = 420},
-    {.tag = WASM_DATA_I32, .di32 = 351},
-    };*/
   Wasm_Data_Slice vars = SLICE_ALLOC(allocr, Wasm_Data, func->local_vars.count);
   // Validate and initialize the parameters
   {
     // Localized arguments to not leak them 
     Wasm_Data args[] = {
-    {.tag = WASM_DATA_I32, .di32 = 420},
     {.tag = WASM_DATA_I32, .di32 = 351},
+    {.tag = WASM_DATA_I32, .di32 = 420},
     };
 
     if(func->param_count != _countof(args)){
@@ -370,11 +366,35 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 << p0.di32; // TODO:: Find out if the expected behavior matches
       pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.shr_s") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 >> p0.di32; // TODO:: Find out if the expected behavior matches
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.xor") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 ^ p0.di32; // TODO:: Find out if the expected behavior matches
+      pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.mul") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 * p0.di32;
       pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.gt_s") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = (s32)(p1.di32 > p0.di32);
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.lt_s") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = (s32)(p1.di32 < p0.di32);
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "select") == 0){
+      Wasm_Data comp = {0}, val2 = {0};
+      popstk(comp.du64); popstk(val2.du64);
+      if(comp.di32==0) slice_last(stk) = val2.du64;
     } else {
       fprintf(stderr, "TODO:: Implement opcode `%.*s`\n", str_print(op));
       return;
@@ -405,6 +425,43 @@ void run_sample(Alloc_Interface allocr, Module* mod){
     
   }
   printf_stk(stk, "After function execution : ");
+  printf("  { ");
+  for_slice(vars, i){
+    const Wasm_Data d = slice_inx(vars,i);
+    printf("%s(", wasm_names[d.tag]);
+    switch(d.tag){
+    case WASM_DATA_I32: {printf("%ld", (long)d.di32); break;}
+    case WASM_DATA_U32: {printf("%lu", (unsigned long)d.du32); break;}
+    case WASM_DATA_F32: {printf("%f", (float)d.df32); break;}
+    case WASM_DATA_U64: {printf("%llu", (long long unsigned)d.du64); break;}
+    }
+    printf(") ");
+  }
+  printf("}\n");
+  memory_rgn_dump(&mem);
+  printf("\n");
+  // Printing the return value also
+  if(func->result_iden.count > 0){
+    if(stk.count == 0) {
+      printf("Expected a return value, but the stack was found to be empty!!!\n");
+    } else {
+      Wasm_Data d = {.du64 = slice_last(stk)};
+      for_range(size_t, i, 0, _countof(wasm_names)){
+	if(str_cstr_cmp(func->result_iden, wasm_names[i]) == 0)
+	  d.tag = i;
+      }
+      printf("Return value: %s(", wasm_names[d.tag]);
+      switch(d.tag){
+      case WASM_DATA_I32: {printf("%ld", (long)d.di32); break;}
+      case WASM_DATA_U32: {printf("%lu", (unsigned long)d.du32); break;}
+      case WASM_DATA_F32: {printf("%f", (float)d.df32); break;}
+      case WASM_DATA_U64: {printf("%llu", (long long unsigned)d.du64); break;}
+      }
+      printf(") \n");
+    }
+  }
+	
+      
 
   
 
