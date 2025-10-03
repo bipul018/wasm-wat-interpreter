@@ -166,7 +166,8 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   }
 
   // Choose a fxn
-  Cstr fxn = "abs_diff";
+  //Cstr fxn = "abs_diff";
+  Cstr fxn = "pick_branch";
 
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;
@@ -506,7 +507,7 @@ int main(void){
 
   //run_memory_page_sample(allocr);
 
-  run_sample(allocr, &main_module);
+  //run_sample(allocr, &main_module);
 
   
 

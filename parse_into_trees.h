@@ -63,6 +63,26 @@ bool parse_identifier_or_str(Str* curr_file,Str* out_data){
   *curr_file = str_slice(*curr_file, node_end, curr_file->count);
   return true;
 }
+Str skip_comment(Str input){
+  // Considering that 'input' is skipped whitespace and valid atoms/identifiers
+  if(match_str_prefix(input, cstr_to_str(";;"))){
+    size_t inx = 0;
+    for_slice(input, i){
+      inx = i;
+      if(slice_inx(input, i) == '\n') break;
+    }
+    // Here is where you test if multiline commenting by escaping newline is done
+    if(slice_inx(input, inx) != '\n'){
+      // The input has exhausted
+      return str_slice(input, inx, input.count);
+    }
+    return str_slice(input, inx+1, input.count);
+  }
+  return input;
+}
+Str skip_ws_and_comment(Str input){
+  return skip_whitespace(skip_comment(skip_whitespace(input)));
+}
 Parse_Node* parse_brackets_(Parse_Info* parser, Str* curr_file){
   // Expect a bracket open, else return false
 
@@ -78,13 +98,13 @@ Parse_Node* parse_brackets_(Parse_Info* parser, Str* curr_file){
     return nullptr;							\
   }while(0)
 
-  *curr_file = skip_whitespace(*curr_file);
+  *curr_file = skip_ws_and_comment(*curr_file);
   if(slice_first(*curr_file) != '(') dump_error_and_ret();
   *curr_file = str_slice(*curr_file, 1, curr_file->count);
 
   // First expect an identifer(data)
   Str head_data = {0};
-  *curr_file = skip_whitespace(*curr_file);
+  *curr_file = skip_ws_and_comment(*curr_file);
   if(!parse_identifier_or_str(curr_file, &head_data)) dump_error_and_ret();
   // TODO:: Report error or assert before returning
 
@@ -95,7 +115,7 @@ Parse_Node* parse_brackets_(Parse_Info* parser, Str* curr_file){
   // Now in a loop expect nodes until closing bracket outside of string
   // Keep appending all the nodes to the 'node'
   while(true){
-    *curr_file = skip_whitespace(*curr_file);
+    *curr_file = skip_ws_and_comment(*curr_file);
     // Exit when bracket end
     const u8 ch = slice_first(*curr_file);
     if(ch == 0) goto error_happened;

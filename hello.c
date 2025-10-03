@@ -28,6 +28,18 @@ int abs_diff(int x, int y){
     return y - x;
   }
 }
+int pick_branch(int x, int y) {
+  if (x > 0) {
+    if (y > 0) {
+      return x-y;
+    } else {
+      return x*y;
+    }
+  } else {
+    return x*x+y*2;
+  }
+}
+
 //int sub2(int a, int b) {
 //  v = a * b;
 //  return v + a;
