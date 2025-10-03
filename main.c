@@ -132,6 +132,11 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   // Memory leaks are happening here
   u64_Darray stk = init_u64_darray(allocr);
   Memory_Region mem = memory_rgn_init(allocr);
+  // TODO:: Wasm standard says that you can implement all the stacks
+  //        in the same single stack and its better (also simple)
+  //        For now, there is no interaction between various stacks (so mine's simpler)
+  //        When those interactions start to happen, might need to revisit all these?
+  u64_Darray blk_stk = {.allocr=allocr};
 
 #define pushstk(v)					\
   do{							\
@@ -393,6 +398,60 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       Wasm_Data comp = {0}, val2 = {0};
       popstk(comp.du64); popstk(val2.du64);
       if(comp.di32==0) slice_last(stk) = val2.du64;
+    } else if (str_cstr_cmp(op, "block") == 0){
+      // TODO:: It seems that it also takes in 'blocktype' as another argument
+      if(!push_u64_darray(&blk_stk, i)){
+	fprintf(stderr, "Couldnt push to block stack\n");
+	return;
+      }
+    } else if (str_cstr_cmp(op, "br_if") == 0){
+      // The first argument is the number of labels(blocks) to pop
+      i++; // maybe verify that its not ended yet ??
+      // Now, pop from the stack 
+      Wasm_Data comp;
+      popstk(comp.du64);
+      if(comp.di32!=0){
+	u64 v;
+	if(!parse_as_u64(slice_inx(func->opcodes, i), &v)){
+	  // TODO:: Also print location of source code
+	  fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+		  i, str_print(slice_inx(func->opcodes, i)));
+	  return;
+	}
+
+	if(v >= blk_stk.count){
+	  fprintf(stderr, "Expected to break out of %zu-th block, when only %zu are present\n", v+1, blk_stk.count);
+	  return;	  
+	}
+
+	i = slice_inx(blk_stk, blk_stk.count-v-1);
+	// Now do the jump operation
+	if(!pop_u64_darray(&blk_stk, v+1)){
+	  fprintf(stderr, "Couldnt pop from block stack\n");
+	  return;
+	}
+	// TODO:: See if break operations can be done by other instruction types
+	if(str_cstr_cmp(slice_inx(func->opcodes, i), "block") != 0){
+	  fprintf(stderr, "Only supports 'block' type labels, found '%.*s'\n",
+		  str_print(slice_inx(func->opcodes, i)));
+	  return;
+	}
+	// Now, search in pairs until you get the 'end'
+	size_t blk_count = 0;
+	do{
+	  const Str opcode = slice_inx(func->opcodes, i);
+	  if(str_cstr_cmp(opcode, "block") == 0) blk_count++;
+	  if(str_cstr_cmp(opcode, "end") == 0) blk_count--;
+	} while(blk_count != 0 && (i++) < func->opcodes.count);
+	if(blk_count != 0){
+	  fprintf(stderr, "Encountered %zu unmatched blocks\n", blk_count);
+	  return;
+	}
+      }
+    } else if (str_cstr_cmp(op, "end") == 0){
+      // Just an ignorable instruction if encountered separately
+    } else if (str_cstr_cmp(op, "return") == 0){
+      break; // Maybe there is a better solution
     } else {
       fprintf(stderr, "TODO:: Implement opcode `%.*s`\n", str_print(op));
       return;
