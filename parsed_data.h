@@ -16,7 +16,6 @@
 typedef struct Data Data;
 struct Data {
   Str identifier; // TODO:: Later if decided that this is always same, remove it
-  u32 idx;
   Parse_Node* offset_expr; // TODO:: Only supports active data sections for now
   Str raw_bytes; // TODO:: Left to parse the data for backslashes
   Parse_Node_Ptr_Slice unknowns;
@@ -38,14 +37,6 @@ bool parse_data(Alloc_Interface allocr, Parse_Node* root, Data* dat){
 
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
   Str_Builder raw_bytes = {.allocr=allocr};
-
-  // The first entry must be a index
-  if(children.count == 0 || // idx must exist
-     !parse_as_wasm_index(slice_first(children), &dat->idx)){
-    fprintf(stderr, "Invalid type node");
-    goto was_error;
-  }
-  slice_shrink_front(children, 1);
 
   // For now, expect a node with 1 child for offset 
   if(children.count == 0 ||
@@ -131,8 +122,6 @@ bool parse_data(Alloc_Interface allocr, Parse_Node* root, Data* dat){
 }
 void try_printing_data(const Data* dat){
   printf("The data section identifier: %.*s\n", str_print(dat->identifier));
-  printf("The data section index is %u.\n",
-	 (unsigned)dat->idx);
   printf("The data section is of active type with the offset type being %.*s\n",
           str_print(dat->offset_expr->data));
   printf("The data to initialize is of %zu length\n", dat->raw_bytes.count);

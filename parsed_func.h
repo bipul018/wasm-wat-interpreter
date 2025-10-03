@@ -8,7 +8,6 @@
 typedef struct Func Func;
 struct Func {
   Str identifier;
-  u32 idx; // Preferably used in the parent container to store in a linear array
   u32 type_idx; // Used to later index into by the parent to do whatever
   // Currently assuming all parameter types are of leaf node types
   // Following three things represent only the types, access by index
@@ -39,14 +38,6 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
     .data = root->children.data,
     .count = root->children.count,
   };
-
-  // The first entry must be own index
-  if(children.count == 0 || // idx must exist
-     !parse_as_wasm_index(slice_first(children), &func->idx)){
-    fprintf(stderr, "No function index found");
-    goto was_error;
-  }
-  slice_shrink_front(children, 1);
 
   // Now the type index must be found
   if(children.count == 0 ||
@@ -166,8 +157,7 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
 // Only prints the heads of unknown ones
 void try_printing_func(const Func* func){
   printf("The func identifier: %.*s\n", str_print(func->identifier));
-  printf("The func[%u] is of type indexed %u\n",
-	 (unsigned)func->idx, (unsigned)func->type_idx);
+  printf("The func is of type indexed %u\n", (unsigned)func->type_idx);
   // Printing the parameters and return types and local vars in a pretty from
   printf("( ");
   for_slice(func->local_vars, i){

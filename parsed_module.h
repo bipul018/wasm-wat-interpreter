@@ -89,36 +89,6 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
     }
   }
 
-  // Sort `types` `funcs` by their index
-  // Verify that they are consecutive (maybe error if not found so)
-  // TODO:: Probably a GNU only thing, might need to find alternative maybe
-  // MAYBE ASSERT WITH `_GNU_SOURCE` macro ?
-#define sort_by_idx(slice)						\
-  qsort_r((slice).data, (slice).count, sizeof((slice).data[0]),		\
-	  compare_type_idx,						\
-	  (void*)((u8*)(&(slice).data[0].idx) - (u8*)(&(slice).data[0])))
-  (void)sort_by_idx(types);
-  (void)sort_by_idx(funcs);
-  (void)sort_by_idx(data_sections);
-#undef sort_by_idx
-
-#define check_sequentiality(field)					\
-  do{									\
-    for_slice((field), i){						\
-      if((field).data[i].idx != i){					\
-	fprintf(stderr, "Module "#field" arent laid sequentially,"	\
-		"expected %zu, got %zu\n",				\
-		i, (size_t)(field).data[i].idx);			\
-	goto was_error;							\
-      }									\
-    }									\
-  }while(0)
-
-  check_sequentiality(types);
-  check_sequentiality(funcs);
-  check_sequentiality(data_sections);
-
-#undef check_sequentiality
   // Reuse the darrays directly as slices
   mod->types = (Type_Slice){.data = types.data, .count = types.count};
   mod->funcs = (Func_Slice){.data = funcs.data, .count = funcs.count};
@@ -161,9 +131,6 @@ void try_printing_module(const Module* mod){
   }
   printf("The module has %zu unknowns: ", mod->unknowns.count);
   for_slice(mod->unknowns, i){
-    for_each_parse_node_df(node, mod->unknowns.data[i]){
-      //printf("Node %p = %s, children = %zu\n", node, node->data.data, node->children.count);
-    }
     printf("[%zu: %.*s] ", i, str_print(mod->unknowns.data[i]->data));
   }
   printf("\n");

@@ -8,7 +8,6 @@
 typedef struct Type Type;
 struct Type {
   Str identifier;
-  u32 idx; // Preferably used in the parent container to store in a linear array
   Parse_Node* type_data; // Not yet parsed, but something to be referred
   // There should be no unknowns here
   Parse_Node_Ptr_Slice unknowns;
@@ -28,18 +27,7 @@ bool parse_type(Alloc_Interface allocr, Parse_Node* root, Type* typ){
 
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
 
-  // The first entry must be a index
-  u32 idx;
-  if(children.count == 0 || // idx must exist
-     !parse_as_wasm_index(slice_first(children), &idx)){
-    fprintf(stderr, "Invalid type node");
-    goto was_error;
-  }
-  typ->idx = idx;
-  slice_shrink_front(children, 1);
-
-
-  // The next entry should be type data (I think)
+  // The first entry should be type data (I think)
   if(children.count == 0) {
     fprintf(stderr, "No type data found\n");
     goto was_error;
@@ -71,8 +59,6 @@ bool parse_type(Alloc_Interface allocr, Parse_Node* root, Type* typ){
 // Only prints the heads of unknown ones
 void try_printing_type(const Type* typ){
   printf("The type identifier: %.*s\n", str_print(typ->identifier));
-  printf("The type index is %u and is a `%.*s`.\n",
-	 (unsigned)typ->idx, str_print(typ->type_data->data));
   printf("The type has %zu unknowns: ", typ->unknowns.count);
   for_slice(typ->unknowns, i){
     printf("[%zu: %.*s] ", i, str_print(typ->unknowns.data[i]->data));

@@ -6,23 +6,6 @@
 // Actual 'parsing'
 
 // TODO:: In the following helper functions, maybe add more error reporting
-// Ensures that the node has no children also 
-bool parse_as_wasm_index(Parse_Node* node, u32* output){
-  if(!node || node->children.count != 0) return false;
-  Str input = node->data;
-  if(input.count == 0) return false;
-  if(input.data[0] != ';') return false;
-  input = str_slice(input, 1, input.count);
-  char* endptr = input.data;
-  // TODO:: Is this safe?
-  long long v = strtoll(endptr, &endptr, 0);
-  if(endptr == (void*)input.data || v < 0) return false;
-  input = str_slice(input, (u8*)endptr-input.data, input.count);
-  if(input.count != 1 || input.data[0] != ';') return false;
-  *output = (u32) v;
-  return true;
-}
-
 bool parse_as_type_index(Parse_Node* typ_idx, u32* out_idx){
   // There must be exactly 1 child
   if(!typ_idx || typ_idx->children.count != 1) return false;

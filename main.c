@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-#include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -101,7 +99,6 @@ bool load_data_to_memory(Memory_Region* mem, const Data* data_sec){
   }
 
   if(!memory_rgn_write(mem, off, data_sec->raw_bytes.count, data_sec->raw_bytes.data)){
-    fprintf(stderr, "Couldnt initialize data segment %zu\n", (size_t)data_sec->idx);
     return false;
   }
   return true;
@@ -498,9 +495,9 @@ int main(void){
     return 1;
   }
 
-  for_each_parse_node_df(node, parser.root){
-    printf("Node %p = %.*s, children = %zu\n", node, str_print(node->data), node->children.count);
-  }
+  //for_each_parse_node_df(node, parser.root){
+  //  printf("Node %p = %.*s, children = %zu\n", node, str_print(node->data), node->children.count);
+  //}
 
   Module main_module = {0}; // TODO:: itsy bitsy memory leak
   if(!parse_module(allocr, parser.root, &main_module)){
@@ -511,7 +508,7 @@ int main(void){
 
   //run_memory_page_sample(allocr);
 
-  //run_sample(allocr, &main_module);
+  run_sample(allocr, &main_module);
 
   
 
