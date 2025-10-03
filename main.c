@@ -498,6 +498,10 @@ int main(void){
     return 1;
   }
 
+  for_each_parse_node_df(node, parser.root){
+    printf("Node %p = %.*s, children = %zu\n", node, str_print(node->data), node->children.count);
+  }
+
   Module main_module = {0}; // TODO:: itsy bitsy memory leak
   if(!parse_module(allocr, parser.root, &main_module)){
     printf("Couldnt parse the main module!!!\n");

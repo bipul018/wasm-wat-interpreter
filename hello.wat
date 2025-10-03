@@ -1,4 +1,12 @@
 (module
+	(; Hello a block comment ;)
+	(; Now img oing to do a nested block comment
+	   (;  Wassap ;)
+	;)
+	;; Now an inline comment
+	;; Another inline comment
+	
+
   (type (;0;) (func (param i32 i32) (result i32)))
   (func (;0;) (type 0) (param i32 i32) (result i32)
     local.get 1

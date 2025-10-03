@@ -63,8 +63,8 @@ bool parse_identifier_or_str(Str* curr_file,Str* out_data){
   *curr_file = str_slice(*curr_file, node_end, curr_file->count);
   return true;
 }
-Str skip_comment(Str input){
-  // Considering that 'input' is skipped whitespace and valid atoms/identifiers
+Str skip_line_comment(Str input){
+  // Expecting that 'input' is skipped whitespace and valid atoms/identifiers
   if(match_str_prefix(input, cstr_to_str(";;"))){
     size_t inx = 0;
     for_slice(input, i){
@@ -80,8 +80,46 @@ Str skip_comment(Str input){
   }
   return input;
 }
+Str skip_block_comment(Str input){
+  // Expecting that 'input' is skipped whitespace and valid atoms/identifiers
+  if(match_str_prefix(input, cstr_to_str("(;"))){
+    input = str_slice(input, 2, input.count);
+    // Now, need to recursively skip because this is nesteable
+    while(true){
+      if(input.count == 0) break;
+      if(slice_first(input) == ';' &&
+	 input.count > 1 &&
+	 slice_inx(input, 1) == ')'){
+	input = str_slice(input, 2, input.count);
+	break;
+      }
+      else if(slice_first(input) == '(' &&
+	 input.count > 1 &&
+	 slice_inx(input, 1) == ';'){
+	input = skip_block_comment(input);
+      }
+      else {
+	input = str_slice(input, 1, input.count);
+      }
+    }
+  }
+  return input;
+}
 Str skip_ws_and_comment(Str input){
-  return skip_whitespace(skip_comment(skip_whitespace(input)));
+  // There are two types of comment: single line comments like ';;'
+  //   and the block nesteable comment like '(; .... ;)'
+  // So, it means that (;0;) are not ids, but comments added for the wat files
+  // Need to do this repeatedly for both types of comments
+  while(1){
+    const Str og_input = input;
+    input = skip_whitespace(input);
+    input = skip_line_comment(input);
+    input = skip_whitespace(input);
+    input = skip_block_comment(input);
+    input = skip_whitespace(input);
+    if(og_input.count == input.count && og_input.data == input.data) break;
+  }
+  return input;
 }
 Parse_Node* parse_brackets_(Parse_Info* parser, Str* curr_file){
   // Expect a bracket open, else return false

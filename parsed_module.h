@@ -139,28 +139,31 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
 // Only prints the heads of unknown ones
 void try_printing_module(const Module* mod){
   printf("The module identifier: %.*s\n", str_print(mod->identifier));
-  printf("The module has %zu type infos: \n", mod->types.count);
-  for_slice(mod->types, i){
-    printf("%zu: ", i);
-    try_printing_type(mod->types.data + i);
-  }
-  printf("The module has %zu functions: \n", mod->funcs.count);
-  for_slice(mod->funcs, i){
-    printf("%zu: ", i);
-    try_printing_func(mod->funcs.data + i);
-  }
   printf("The module has %zu exports: \n", mod->exports.count);
   for_slice(mod->exports, i){
     printf("%zu: ", i);
     try_printing_export(mod->exports.data + i);
+  }
+  printf("The module has %zu type infos: \n", mod->types.count);
+  for_slice(mod->types, i){
+    printf("%zu: ", i);
+    try_printing_type(mod->types.data + i);
   }
   printf("The module has %zu data sections: \n", mod->data_sections.count);
   for_slice(mod->data_sections, i){
     printf("%zu: ", i);
     try_printing_data(mod->data_sections.data + i);
   }  
+  printf("The module has %zu functions: \n", mod->funcs.count);
+  for_slice(mod->funcs, i){
+    printf("%zu: ", i);
+    try_printing_func(mod->funcs.data + i);
+  }
   printf("The module has %zu unknowns: ", mod->unknowns.count);
   for_slice(mod->unknowns, i){
+    for_each_parse_node_df(node, mod->unknowns.data[i]){
+      //printf("Node %p = %s, children = %zu\n", node, node->data.data, node->children.count);
+    }
     printf("[%zu: %.*s] ", i, str_print(mod->unknowns.data[i]->data));
   }
   printf("\n");
