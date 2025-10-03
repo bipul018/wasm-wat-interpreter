@@ -107,34 +107,39 @@
     i32.const 0
     local.set 1
     block  ;; label = @1
-      local.get 0
-      i32.const 1
-      i32.lt_s
-      br_if 0 (;@1;)
-      local.get 0
-      local.set 2
+      block  ;; label = @2
+        local.get 0
+        i32.const 2
+        i32.ge_s
+        br_if 0 (;@2;)
+        local.get 0
+        local.set 2
+        br 1 (;@1;)
+      end
+      i32.const 0
+      local.set 1
       loop  ;; label = @2
-        local.get 2
+        local.get 0
         i32.const -1
         i32.add
         call 5
         local.get 1
         i32.add
         local.set 1
-        local.get 2
-        i32.const 2
+        local.get 0
+        i32.const 3
         i32.gt_u
         local.set 3
-        local.get 2
+        local.get 0
         i32.const -2
         i32.add
-        local.tee 0
-        local.set 2
+        local.tee 2
+        local.set 0
         local.get 3
         br_if 0 (;@2;)
       end
     end
-    local.get 0
+    local.get 2
     local.get 1
     i32.add)
   (memory (;0;) 17)
