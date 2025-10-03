@@ -169,7 +169,8 @@ void run_sample(Alloc_Interface allocr, Module* mod){
 
   // Choose a fxn
   //Cstr fxn = "abs_diff";
-  Cstr fxn = "pick_branch";
+  //Cstr fxn = "pick_branch";
+  Cstr fxn = "fibo";
 
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;
@@ -199,8 +200,9 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   {
     // Localized arguments to not leak them 
     Wasm_Data args[] = {
-    {.tag = WASM_DATA_I32, .di32 = 351},
-    {.tag = WASM_DATA_I32, .di32 = 420},
+      //{.tag = WASM_DATA_I32, .di32 = 351},
+      //{.tag = WASM_DATA_I32, .di32 = 420},
+      {.tag = WASM_DATA_I32, .di32 = 6},
     };
 
     if(func->param_count != _countof(args)){
@@ -271,6 +273,26 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       // Arguments are validated already
       // Get the value from stack without popping and push it
       slice_inx(vars,inx).du64 = slice_last(stk); // TODO:: Maybe implement actual local variable
+    } else if (str_cstr_cmp(op, "local.set") == 0){
+      // TODO:: Find if theres some better way of validating types
+      i++; // maybe verify that its not ended yet ??
+      u64 inx;
+      if(!parse_as_u64(slice_inx(func->opcodes, i), &inx)){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+		i, str_print(slice_inx(func->opcodes, i)));
+	return;
+      }
+      // See if the index exists
+      if(inx >= vars.count){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Tried to access %zu-th var when only %zu vars are present\n",
+		inx, vars.count);
+	return;
+      }
+      // Arguments are validated already
+      // Get the value from stack and then pop it
+      popstk(slice_inx(vars,inx).du64);
     } else if (str_cstr_cmp(op, "i32.const") == 0){
       i++; // maybe verify that its not ended yet ??
       s64 v;
@@ -389,6 +411,17 @@ void run_sample(Alloc_Interface allocr, Module* mod){
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = (s32)(p1.di32 > p0.di32);
       pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.gt_u") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      // TODO:: Need to ensure that this is alright
+      r.di32 = (s32)((u32)p1.di32 > (u32)p0.di32);
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.ge_s") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = (s32)(p1.di32 >= p0.di32);
+      pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.lt_s") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -401,7 +434,13 @@ void run_sample(Alloc_Interface allocr, Module* mod){
     } else if (str_cstr_cmp(op, "block") == 0){
       // TODO:: It seems that it also takes in 'blocktype' as another argument
       if(!push_u64_darray(&blk_stk, i)){
-	fprintf(stderr, "Couldnt push to block stack\n");
+	fprintf(stderr, "Couldnt push to block/loop stack\n");
+	return;
+      }
+    } else if (str_cstr_cmp(op, "loop") == 0){
+      // TODO:: It seems that it also takes in 'blocktype' as another argument
+      if(!push_u64_darray(&blk_stk, i)){
+	fprintf(stderr, "Couldnt push to block/loop stack\n");
 	return;
       }
     } else if (str_cstr_cmp(op, "br_if") == 0){
@@ -431,25 +470,43 @@ void run_sample(Alloc_Interface allocr, Module* mod){
 	  return;
 	}
 	// TODO:: See if break operations can be done by other instruction types
-	if(str_cstr_cmp(slice_inx(func->opcodes, i), "block") != 0){
-	  fprintf(stderr, "Only supports 'block' type labels, found '%.*s'\n",
-		  str_print(slice_inx(func->opcodes, i)));
+	const Str label_op = slice_inx(func->opcodes, i);
+	if((str_cstr_cmp(label_op, "block") != 0) && (str_cstr_cmp(label_op, "loop") != 0)) {
+	  fprintf(stderr, "Only supports 'block' and 'loop' type labels, found '%.*s'\n",
+		  str_print(label_op));
 	  return;
 	}
-	// Now, search in pairs until you get the 'end'
-	size_t blk_count = 0;
-	do{
-	  const Str opcode = slice_inx(func->opcodes, i);
-	  if(str_cstr_cmp(opcode, "block") == 0) blk_count++;
-	  if(str_cstr_cmp(opcode, "end") == 0) blk_count--;
-	} while(blk_count != 0 && (i++) < func->opcodes.count);
-	if(blk_count != 0){
-	  fprintf(stderr, "Encountered %zu unmatched blocks\n", blk_count);
-	  return;
+	// For 'loop' type blocks, you dont need to go to the end block
+	//     but you need to re-push the loop index
+	if(str_cstr_cmp(label_op, "loop") == 0){
+	  if(!push_u64_darray(&blk_stk, i)){
+	    fprintf(stderr, "Couldnt push to block/loop stack\n");
+	    return;
+	  }
+	} else {
+	  // Now, search in pairs until you get the 'end'
+	  size_t blk_count = 0;
+	  do{
+	    const Str opcode = slice_inx(func->opcodes, i);
+	    if(str_cstr_cmp(opcode, "block") == 0) blk_count++;
+	    if(str_cstr_cmp(opcode, "loop") == 0) blk_count++;
+	    if(str_cstr_cmp(opcode, "end") == 0) blk_count--;
+	  } while(blk_count != 0 && (i++) < func->opcodes.count);
+	  // On reaching the final 'end' value, the blk_count will be 0
+	  // And 'i' will point to the 'end' opcode, but the for loop will go to next
+	  // value and thus, 'end' wont be encountered otherwise
+	  if(blk_count != 0){
+	    fprintf(stderr, "Encountered %zu unmatched blocks\n", blk_count);
+	    return;
+	  }
 	}
       }
     } else if (str_cstr_cmp(op, "end") == 0){
-      // Just an ignorable instruction if encountered separately
+      // Might need to pop from the stack
+      if(!pop_u64_darray(&blk_stk, 1)){
+	fprintf(stderr, "Couldnt pop from block stack\n");
+	return;
+      }
     } else if (str_cstr_cmp(op, "return") == 0){
       break; // Maybe there is a better solution
     } else {
