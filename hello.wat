@@ -102,6 +102,41 @@
     local.get 0
     i32.mul
     i32.add)
+  (func (;5;) (type 1) (param i32) (result i32)
+    (local i32 i32 i32)
+    i32.const 0
+    local.set 1
+    block  ;; label = @1
+      local.get 0
+      i32.const 1
+      i32.lt_s
+      br_if 0 (;@1;)
+      local.get 0
+      local.set 2
+      loop  ;; label = @2
+        local.get 2
+        i32.const -1
+        i32.add
+        call 5
+        local.get 1
+        i32.add
+        local.set 1
+        local.get 2
+        i32.const 2
+        i32.gt_u
+        local.set 3
+        local.get 2
+        i32.const -2
+        i32.add
+        local.tee 0
+        local.set 2
+        local.get 3
+        br_if 0 (;@2;)
+      end
+    end
+    local.get 0
+    local.get 1
+    i32.add)
   (memory (;0;) 17)
   (global (;0;) (mut i32) (i32.const 1048576))
   (export "memory" (memory 0))
@@ -110,4 +145,5 @@
   (export "fibo" (func 2))
   (export "abs_diff" (func 3))
   (export "pick_branch" (func 4))
+  (export "fibo_rec" (func 5))
   (data (;0;) (i32.const 1048576) "'\22\00\002\00\00\003\00\00\004\00\00\005\00\00\00"))

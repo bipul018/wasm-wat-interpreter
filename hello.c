@@ -39,7 +39,10 @@ int pick_branch(int x, int y) {
     return x*x+y*2;
   }
 }
-
+int fibo_rec(int n){
+  if(n <= 0) return n;
+  return fibo_rec(n-1) + fibo_rec(n-2);
+}
 //int sub2(int a, int b) {
 //  v = a * b;
 //  return v + a;
