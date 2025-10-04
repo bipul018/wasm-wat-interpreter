@@ -60,6 +60,9 @@ struct Exec_Context {
 Wasm_Fxn_Ptr wasm_fxn_executor; // Used to make calls to a wasm fxn, expects param in stk
 Wasm_Fxn_Ptr dummy_import_fxn; // To be used everywhere if import not fo
 
+// Only for initial testing
+Wasm_Fxn_Ptr wasm_extern_printint;
+
 // TODO:: figure out some other way of resolving the imports maybe
 Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
   // Allocate the memory region, stk, blk_stk
@@ -89,9 +92,14 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
   fxn_cnt = 0;
   for_slice(mod->imports, i){
     if(mod->imports.data[i].import_type = FUNCTION_IMPORT_TYPE){
-      // Manually fill them for now
-      slice_inx(cxt.fxns, fxn_cnt).fptr = dummy_import_fxn;
-      slice_inx(cxt.fxns, fxn_cnt).data = mod->imports.data+i;
+      // Hardcode the 'printint' fxn for now
+      if(str_cstr_cmp(mod->imports.data[i].self_name, "printint") == 0){
+	slice_inx(cxt.fxns, fxn_cnt).fptr = wasm_extern_printint;
+      } else {
+	// Manually fill them for now
+	slice_inx(cxt.fxns, fxn_cnt).fptr = dummy_import_fxn;
+	slice_inx(cxt.fxns, fxn_cnt).data = mod->imports.data+i;
+      }
       fxn_cnt++;
     }
   }
@@ -157,6 +165,23 @@ Wasm_Data wasm_data_by_type(const Str type_name){
     }
   }
   return d;
+}
+
+u64 wasm_extern_printint(Alloc_Interface allocr, Exec_Context* cxt, void* d){
+  (void)allocr;
+  (void)d;
+
+  if(cxt->stk.count < 1){
+    fprintf(stderr, "Expected 1 argument, found the value stack to be empty\n");
+    return 0;
+  }
+
+  Wasm_Data v = {.du64 = slice_last(cxt->stk)};
+  (void)pop_u64_darray(&cxt->stk, 1);
+
+  printf("\n-----------------------\n%d\n----------------------\n",
+	 (int)v.di32);
+  return 1;
 }
 
 u64 exec_wasm_fxn(Alloc_Interface allocr, Exec_Context* cxt, size_t finx){
@@ -1199,7 +1224,9 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   //Cstr fxn = "abs_diff";
   //Cstr fxn = "pick_branch";
   //Cstr fxn = "fibo";
-  Cstr fxn = "fibo_rec";
+  //Cstr fxn = "fibo_rec";
+  //Cstr fxn = "sub";
+  Cstr fxn = "print_sum";
 
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;
@@ -1215,9 +1242,9 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   return;
  found_the_fxn:
   Wasm_Data args[] = {
-    //{.tag = WASM_DATA_I32, .di32 = 351},
-    //{.tag = WASM_DATA_I32, .di32 = 420},
-    {.tag = WASM_DATA_I32, .di32 = 7},
+    {.tag = WASM_DATA_I32, .di32 = 420},
+    {.tag = WASM_DATA_I32, .di32 = 351},
+    //{.tag = WASM_DATA_I32, .di32 = 7},
   };
   for_range(size_t, i, 0, _countof(args)){
     if(!push_u64_darray(&exec_cxt.stk, args[i].du64)){
