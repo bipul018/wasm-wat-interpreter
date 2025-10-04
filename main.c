@@ -112,7 +112,7 @@ int main(void){
 
   //run_memory_page_sample(allocr);
 
-  //run_sample(allocr, &main_module);
+  run_sample(allocr, &main_module);
 
   
 

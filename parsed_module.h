@@ -125,6 +125,11 @@ void try_printing_module(const Module* mod){
     printf("%zu: ", i);
     try_printing_export(mod->exports.data + i);
   }
+  printf("The module has %zu imports: \n", mod->imports.count);
+  for_slice(mod->imports, i){
+    printf("%zu: ", i);
+    try_printing_import(mod->imports.data + i);
+  }
   printf("The module has %zu type infos: \n", mod->types.count);
   for_slice(mod->types, i){
     printf("%zu: ", i);
@@ -139,11 +144,6 @@ void try_printing_module(const Module* mod){
   for_slice(mod->funcs, i){
     printf("%zu: ", i);
     try_printing_func(mod->funcs.data + i);
-  }
-  printf("The module has %zu imports: \n", mod->imports.count);
-  for_slice(mod->imports, i){
-    printf("%zu: ", i);
-    try_printing_import(mod->imports.data + i);
   }
   printf("The module has %zu unknowns: ", mod->unknowns.count);
   for_slice(mod->unknowns, i){
