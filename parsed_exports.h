@@ -10,9 +10,9 @@ struct Export {
   Str identifier;
   Str name;
   enum {
+    UNKNOWN_EXPORT_TYPE,
     MEMORY_EXPORT_TYPE,
     FUNCTION_EXPORT_TYPE,
-    UNKNOWN_EXPORT_TYPE,
   } export_type;
   Str export_type_name; // Maybe this will be optional later
   u32 export_idx;
@@ -44,7 +44,7 @@ bool parse_export(Alloc_Interface allocr, Parse_Node* root, Export* exprt){
 
   // Then expect a child with (<type> index)
   if(children.count == 0) {
-    fprintf(stderr, "Couldnt a node with the location of export\n");
+    fprintf(stderr, "Couldnt find a node with the location of export\n");
     goto was_error;
   }
 

@@ -9,8 +9,9 @@ typedef struct Module Module;
 struct Module {
   Str identifier;
   Type_Slice types;
-  Func_Slice funcs;
+  Func_Slice funcs; // Something else will have to build the final fxn list
   Export_Slice exports;
+  Import_Slice imports; // Something else will have to build the final fxn list
   Data_Slice data_sections;
   // All the unknown children are saved here, which at the beginning, is all of them
   // The data inside these will directly refer to the parser,
@@ -45,46 +46,54 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
 
   // Collect the rest into an unknown array
 
-  Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
-  Type_Darray types = init_Type_darray(allocr);
-  Func_Darray funcs = init_Func_darray(allocr);
-  Export_Darray exports = init_Export_darray(allocr);
-  Data_Darray data_sections = init_Data_darray(allocr);
+  Parse_Node_Ptr_Darray unknowns      = {.allocr=allocr};
+  Type_Darray           types         = {.allocr=allocr};
+  Func_Darray           funcs         = {.allocr=allocr};
+  Export_Darray         exports       = {.allocr=allocr};
+  Import_Darray         imports       = {.allocr=allocr};
+  Data_Darray           data_sections = {.allocr=allocr};
 
   for_slice(root->children, i){
     Parse_Node* child = root->children.data[i];
     Type typ = {0};
     Func func = {0};
     Export expt = {0};
+    Import impt = {0};
     Data dat = {0};
     if(parse_type(allocr, child, &typ)){
       if(!push_Type_darray(&types, typ)){
-	fprintf(stderr, "Couldnt allocate memory !!!\n");
-	goto was_error;
+        fprintf(stderr, "Couldnt allocate memory !!!\n");
+        goto was_error;
       }
     }
     else if(parse_func(allocr, child, &func)){
       if(!push_Func_darray(&funcs, func)){
-	fprintf(stderr, "Couldnt allocate memory !!!\n");
-	goto was_error;
+        fprintf(stderr, "Couldnt allocate memory !!!\n");
+        goto was_error;
       }
     }
     else if(parse_export(allocr, child, &expt)){
       if(!push_Export_darray(&exports, expt)){
-	fprintf(stderr, "Couldnt allocate memory !!!\n");
-	goto was_error;
+        fprintf(stderr, "Couldnt allocate memory !!!\n");
+        goto was_error;
+      }
+    }
+    else if(parse_import(allocr, child, &impt)){
+      if(!push_Import_darray(&imports, impt)){
+        fprintf(stderr, "Couldnt allocate memory !!!\n");
+        goto was_error;
       }
     }
     else if(parse_data(allocr, child, &dat)){
       if(!push_Data_darray(&data_sections, dat)){
-	fprintf(stderr, "Couldnt allocate memory !!!\n");
-	goto was_error;
+        fprintf(stderr, "Couldnt allocate memory !!!\n");
+        goto was_error;
       }
     }
     else{
       if(!push_Parse_Node_Ptr_darray(&unknowns, child)){
-	fprintf(stderr, "Couldnt allocate memory !!!\n");
-	goto was_error;
+        fprintf(stderr, "Couldnt allocate memory !!!\n");
+        goto was_error;
       }
     }
   }
@@ -94,10 +103,12 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
   mod->funcs = (Func_Slice){.data = funcs.data, .count = funcs.count};
   mod->unknowns = (Parse_Node_Ptr_Slice){.data = unknowns.data, .count = unknowns.count};
   mod->exports = (Export_Slice){.data=exports.data, .count=exports.count};
+  mod->imports = (Import_Slice){.data=imports.data, .count=imports.count};
   mod->data_sections = (Data_Slice){.data=data_sections.data, .count=data_sections.count};
 
   return true;
  was_error:
+  (void)resize_Import_darray(&imports, 0);
   (void)resize_Export_darray(&exports, 0);
   (void)resize_Parse_Node_Ptr_darray(&unknowns, 0);
   (void)resize_Type_darray(&types, 0);
@@ -128,6 +139,11 @@ void try_printing_module(const Module* mod){
   for_slice(mod->funcs, i){
     printf("%zu: ", i);
     try_printing_func(mod->funcs.data + i);
+  }
+  printf("The module has %zu imports: \n", mod->imports.count);
+  for_slice(mod->imports, i){
+    printf("%zu: ", i);
+    try_printing_import(mod->imports.data + i);
   }
   printf("The module has %zu unknowns: ", mod->unknowns.count);
   for_slice(mod->unknowns, i){

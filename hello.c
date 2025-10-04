@@ -9,18 +9,6 @@ int sub(int a, int b) {
   int d = c -a*b + v[0]+v[a];
   return d;
 }
-int fibo(int n){
-  int a0 = 0;
-  int a1 = 1;
-
-  while(n > 0){
-    n--;
-    int c = a0 + a1;
-    a0 = a1;
-    a1 = c;
-  }
-  return a0;
-}
 int abs_diff(int x, int y){
   if(x > y) {
     return x - y;
@@ -39,9 +27,25 @@ int pick_branch(int x, int y) {
     return x*x+y*2;
   }
 }
+int fibo(int n){
+  int a0 = 0;
+  int a1 = 1;
+
+  while(n > 0){
+    n--;
+    int c = a0 + a1;
+    a0 = a1;
+    a1 = c;
+  }
+  return a0;
+}
 int fibo_rec(int n){
   if(n <= 1) return n;
   return fibo_rec(n-1) + fibo_rec(n-2);
+}
+extern void printint(int x);
+void print_sum(int a, int b){
+  printint(a+b);
 }
 //int sub2(int a, int b) {
 //  v = a * b;

@@ -63,6 +63,7 @@ bool match_str_suffix(Str haystack, Str needle){
 #include "parsed_type.h"
 #include "parsed_func.h"
 #include "parsed_exports.h" 
+#include "parsed_imports.h"
 #include "parsed_data.h"
 #include "parsed_module.h"
 
@@ -111,7 +112,7 @@ int main(void){
 
   //run_memory_page_sample(allocr);
 
-  run_sample(allocr, &main_module);
+  //run_sample(allocr, &main_module);
 
   
 
