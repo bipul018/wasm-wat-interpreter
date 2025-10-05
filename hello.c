@@ -44,6 +44,7 @@ int fibo_rec(int n){
   return fibo_rec(n-1) + fibo_rec(n-2);
 }
 extern void printint(int x);
+extern void printhex(int x);
 void print_sum(int a, int b){
   printint(a+b);
 }
@@ -53,13 +54,40 @@ void begin_drawing(void);
 void end_drawing(void);
 int window_should_close(void);
 void clear_background(unsigned);
+void draw_fps(int x, int y);
 
 void run_raylib(int dummy_arg){
   (void)dummy_arg;
   init_window(800, 800);
+
+  unsigned cols[] = {
+    0xffffffff,
+    0xffffff00,
+    0xffff00ff,
+    0xff00ffff,
+    0xffff0000,
+    0xff00ff00,
+    0xff0000ff,
+    0xff000000,
+  };
+
+  const int count = sizeof(cols)/sizeof(cols[0]);
+
+  int inx = 0;
+  const int steps = 100;
+  
+
   while(window_should_close() == 0){
     begin_drawing();
-    clear_background(0xffff0000);
+    const int i = (inx / steps) % count;
+    printint(i);
+    printhex(cols[i]);
+    clear_background(cols[i]);
+
+    draw_fps(10, 10);
+
     end_drawing();
+    inx++;
   }
+  printhex(0xff00ff00);
 }

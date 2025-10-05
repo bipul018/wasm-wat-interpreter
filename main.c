@@ -80,11 +80,11 @@ int main(void){
 
   Parse_Info parser = init_parse_info(allocr, "hello.wat");
 
-  printf("Printing the file by lines: \n");
-  for_slice(parser.line_nums, ln){
-    Str line = get_line(parser.file, parser.line_nums, ln);
-    printf("%4d: %.*s\n", (int)ln+1, str_print(line));
-  }
+  // printf("Printing the file by lines: \n");
+  // for_slice(parser.line_nums, ln){
+  //   Str line = get_line(parser.file, parser.line_nums, ln);
+  //   printf("%4d: %.*s\n", (int)ln+1, str_print(line));
+  // }
 
   u32_Slice poses = SLICE_FROM_ARRAY(u32, ((u32[]){0, 4, 6, 7, 8, 18, 499, 819, 731, 732, 733}));
 

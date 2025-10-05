@@ -70,13 +70,16 @@ bool parse_data(Alloc_Interface allocr, Parse_Node* root, Data* dat){
 	  else if(in == 'n') out = '\n';
 	  else if(in == 'r') out = '\r';
 	  else if(in == 't') out = '\t';
-	  else if(isdigit(in) &&
+	  else if(isxdigit(in) &&
 		  (i+1)<escaped_bytes.count &&
-		  isdigit(slice_inx(escaped_bytes, i+1))) {
-	    u32 v = in - '0';
+		  isxdigit(slice_inx(escaped_bytes, i+1))) {
+	    // TODO:: Support capital hex chars also later
+	    u32 v1 = isdigit(in)?(in - '0'):(in-'a');
 	    i++;
-	    v = (v << 4) | (slice_inx(escaped_bytes, i) - '0');
-	    out = v;
+	    u8 in2 = slice_inx(escaped_bytes, i);
+	    u32 v2 = isdigit(in2)?(in2-'0'):(in2-'a');
+
+	    out = (v1 << 4) | v2;
 	  }
 	  // TODO:: Not implemented \u{hexbytes} yet
 	  else {

@@ -62,6 +62,7 @@ Wasm_Fxn_Ptr dummy_import_fxn; // To be used everywhere if import not fo
 
 // Only for initial testing
 Wasm_Fxn_Ptr wasm_extern_printint;
+Wasm_Fxn_Ptr wasm_extern_printhex;
 
 // TODO:: figure out some other way of resolving the imports maybe
 Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
@@ -95,7 +96,12 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
       // Hardcode the 'printint' fxn for now
       if(str_cstr_cmp(mod->imports.data[i].self_name, "printint") == 0){
 	slice_inx(cxt.fxns, fxn_cnt).fptr = wasm_extern_printint;
-      } else {
+      }
+      // Hardcode the 'printhex' fxn for now
+      else if(str_cstr_cmp(mod->imports.data[i].self_name, "printhex") == 0){
+	slice_inx(cxt.fxns, fxn_cnt).fptr = wasm_extern_printhex;
+      }
+      else {
 	// Manually fill them for now
 	slice_inx(cxt.fxns, fxn_cnt).fptr = dummy_import_fxn;
 	slice_inx(cxt.fxns, fxn_cnt).data = mod->imports.data+i;
@@ -180,6 +186,22 @@ u64 wasm_extern_printint(Alloc_Interface allocr, Exec_Context* cxt, void* d){
   (void)pop_u64_darray(&cxt->stk, 1);
 
   printf("\n-----------------------\n%d\n----------------------\n",
+	 (int)v.di32);
+  return 1;
+}
+u64 wasm_extern_printhex(Alloc_Interface allocr, Exec_Context* cxt, void* d){
+  (void)allocr;
+  (void)d;
+
+  if(cxt->stk.count < 1){
+    fprintf(stderr, "Expected 1 argument, found the value stack to be empty\n");
+    return 0;
+  }
+
+  Wasm_Data v = {.du64 = slice_last(cxt->stk)};
+  (void)pop_u64_darray(&cxt->stk, 1);
+
+  printf("\n-----------------------\n%x\n----------------------\n",
 	 (int)v.di32);
   return 1;
 }
@@ -501,6 +523,22 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 * p0.di32;
       pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.and") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 & p0.di32;
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.div_u") == 0){
+      Wasm_Data p_divr = {0}, p_divd = {0}, r = {0};
+      popstk(p_divr.du64); popstk(p_divd.du64);
+      // TODO:: Find out more about these traps
+      if(p_divr.di32 == 0) {
+	fprintf(stderr, "Division by 0 attempted\n");
+	return 0;
+      }
+      // TODO:: Figure out what the deal with '_u' is actually
+      r.di32 = (s32)((u32)p_divd.di32 / (u32)p_divr.di32);
+      pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.gt_s") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -749,6 +787,7 @@ u64 init_window(Alloc_Interface, Exec_Context* cxt, void* data){
   
   printf("--------------- window sizes: %dx%d  ----------\n", dw.di32, dh.di32);
   InitWindow(dw.di32, dh.di32, window_name);
+  SetTargetFPS(120);
   printf("-------------------------- called the window creation fxn ----------\n");
   return 1;
 }
@@ -785,6 +824,18 @@ u64 window_should_close(Alloc_Interface, Exec_Context* cxt, void* data){
   if(!push_u64_darray(&cxt->stk, v.du64)) errnret(0, "allocation failure\n");
   return 1;
 }
+u64 draw_fps(Alloc_Interface, Exec_Context* cxt, void* data){
+  // Two int32 args
+  if(cxt->stk.count < 2) errnret(0, "Drawing fps needs 2 args, (posx,posy)\n");
+  Wasm_Data px={0},py={0},fsz={0};
+  px.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  py.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+
+  DrawFPS(px.di32, py.di32);
+  return 1;
+}
 
 void patch_imports(Exec_Context* cxt){
   for_slice(cxt->fxns, i){
@@ -804,6 +855,9 @@ void patch_imports(Exec_Context* cxt){
       }
       else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "clear_background") == 0){
 	slice_inx(cxt->fxns, i).fptr = clear_background;
+      }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "draw_fps") == 0){
+	slice_inx(cxt->fxns, i).fptr = draw_fps;
       }
     }
   }
