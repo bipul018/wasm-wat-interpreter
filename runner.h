@@ -527,6 +527,11 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = (s32)(p1.di32 <= p0.di32);
       pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.eqz") == 0){
+      Wasm_Data p = {0},  r = {0};
+      popstk(p.du64);
+      r.di32 = (s32)(p.di32 == 0);
+      pushstk(r.du64);
     } else if (str_cstr_cmp(op, "select") == 0){
       Wasm_Data comp = {0}, val2 = {0};
       popstk(comp.du64); popstk(val2.du64);
@@ -722,16 +727,101 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
   return cycles;
 }
 
+#include <raylib.h>
+
+#define errnret(retval, ...)			\
+  do{						\
+    fprintf(stderr, __VA_ARGS__);		\
+    return (retval);				\
+  }while(0)
+
+
+u64 init_window(Alloc_Interface, Exec_Context* cxt, void* data){
+  Cstr window_name = (Cstr)data;
+  printf("--------------- window name: `%s`  ----------\n", window_name);
+  // Two int32 args
+  if(cxt->stk.count < 2) errnret(0, "Window initialization needs 2 args (w,h)\n");
+  Wasm_Data dw, dh = {0};
+  dh.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  dw.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  
+  printf("--------------- window sizes: %dx%d  ----------\n", dw.di32, dh.di32);
+  InitWindow(dw.di32, dh.di32, window_name);
+  printf("-------------------------- called the window creation fxn ----------\n");
+  return 1;
+}
+
+u64 begin_drawing(Alloc_Interface, Exec_Context* cxt, void* data){
+  (void)cxt;
+  (void)data;
+  BeginDrawing();
+  return 1;
+}
+u64 end_drawing(Alloc_Interface, Exec_Context* cxt, void* data){
+  (void)cxt;
+  (void)data;
+  EndDrawing();
+  return 1;
+}
+u64 clear_background(Alloc_Interface, Exec_Context* cxt, void* data){
+  // One u32 arg
+  if(cxt->stk.count < 1) errnret(0, "Window initialization needs 1 arg: hex background color\n");
+  Wasm_Data col = {0};
+  col.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+
+  Color* c = (Color*)&col.du32;
+
+  ClearBackground(*c);
+  return 1;
+}
+u64 window_should_close(Alloc_Interface, Exec_Context* cxt, void* data){
+  (void)data;
+  Wasm_Data v = {0};
+  v.di32=WindowShouldClose();
+
+  if(!push_u64_darray(&cxt->stk, v.du64)) errnret(0, "allocation failure\n");
+  return 1;
+}
+
+void patch_imports(Exec_Context* cxt){
+  for_slice(cxt->fxns, i){
+    if(slice_inx(cxt->fxns, i).fptr == dummy_import_fxn){
+      if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "init_window") == 0){
+	slice_inx(cxt->fxns, i).fptr = init_window;
+	slice_inx(cxt->fxns, i).data = "Sample raylib window";
+      }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "begin_drawing") == 0){
+	slice_inx(cxt->fxns, i).fptr = begin_drawing;
+      }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "end_drawing") == 0){
+	slice_inx(cxt->fxns, i).fptr = end_drawing;
+      }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "window_should_close") == 0){
+	slice_inx(cxt->fxns, i).fptr = window_should_close;
+      }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "clear_background") == 0){
+	slice_inx(cxt->fxns, i).fptr = clear_background;
+      }
+    }
+  }
+}
+
+
 void run_sample(Alloc_Interface allocr, Module* mod){
   Exec_Context exec_cxt = init_exec_context(allocr, mod);
+  patch_imports(&exec_cxt);
   // Find the desired exported function
 
   //Cstr fxn = "abs_diff";
   //Cstr fxn = "pick_branch";
-  Cstr fxn = "fibo";
+  //Cstr fxn = "fibo";
   //Cstr fxn = "fibo_rec";
   //Cstr fxn = "sub";
   //Cstr fxn = "print_sum";
+  Cstr fxn = "run_raylib";
 
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;

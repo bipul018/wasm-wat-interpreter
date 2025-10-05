@@ -1,3 +1,4 @@
+// ./build.sh && cc main.c -lraylib -lm -lGL -lpthread -ldl -lrt -lX11  -o main.out && ./main.out
 #include <stddef.h>
 #include <stdio.h>
 #include <ctype.h>

@@ -1,10 +1,11 @@
 # clang --target=wasm32 -O0 -nostdlib -Wl,--no-entry -Wl,--export=add -o hello.wasm hello.c
-# set -xe
+set -xe
 # zig cc -target wasm32-freestanding -Os \
 #     -nostdlib -Wl,--no-entry -Wl,--export=add -Wl,--export=sub,--export=abs_diff,--export=pick_branch,--export=fibo,--export=fibo_rec \
 #   hello.c -o hello.wasm
 
-nix shell nixpkgs#llvmPackages_21.clang-unwrapped nixpkgs#llvmPackages_21.lld -c \
+# nix shell nixpkgs#llvmPackages_21.clang-unwrapped nixpkgs#llvmPackages_21.lld -c \
+
 clang \
 --target=wasm32 \
 -nostdlib \
@@ -19,6 +20,7 @@ hello.c \
 -Wl,--export=fibo \
 -Wl,--export=fibo_rec \
 -Wl,--export=print_sum \
+-Wl,--export=run_raylib \
 -Wl,--allow-undefined \
 -fuse-ld=lld
 

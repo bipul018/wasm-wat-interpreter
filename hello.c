@@ -47,15 +47,19 @@ extern void printint(int x);
 void print_sum(int a, int b){
   printint(a+b);
 }
-//int sub2(int a, int b) {
-//  v = a * b;
-//  return v + a;
-//}
-//void hiya(int* a, float b){
-//  *a = (int)b;
-//}
-//int getit(void){
-//  return 48;
-//}
-//void donot(void){
-//}
+
+void init_window(int w, int h);
+void begin_drawing(void);
+void end_drawing(void);
+int window_should_close(void);
+void clear_background(unsigned);
+
+void run_raylib(int dummy_arg){
+  (void)dummy_arg;
+  init_window(800, 800);
+  while(window_should_close() == 0){
+    begin_drawing();
+    clear_background(0xffff0000);
+    end_drawing();
+  }
+}
