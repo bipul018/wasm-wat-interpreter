@@ -211,7 +211,7 @@ u64 exec_wasm_fxn(Alloc_Interface allocr, Exec_Context* cxt, size_t finx){
     return 0;
   }
   // TODO:: Fix this hardcoded 5 item limit by properly analyzing types
-  if((5 + cxt->stk.count) < blkn){
+  if((5 + cxt->stk.count) < stkn){
     fprintf(stderr, "Value stack violation (likely) at function %zu\n", finx);
     return 0;
   }
@@ -264,6 +264,36 @@ u64 wasm_fxn_executor(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   return calld_cyc + 1; 
 }
 
+
+// Operation 1: find matching end block
+//    starting block can be block/loop/if/else
+//    during scan though, only block/loop/if are looked for
+//    end blocks are end/else, so might need to do twice for if/else block pair
+// Returns -1 on failure?
+static s64 find_end_block(Str_Slice opcodes, size_t inx){
+  s64 cnt = 0;
+  Str op = slice_inx(opcodes, inx);
+  if(str_cstr_cmp(op, "block") != 0 &&
+     str_cstr_cmp(op, "loop") != 0 &&
+     str_cstr_cmp(op, "if") != 0 &&
+     str_cstr_cmp(op, "else") != 0){
+    return -1;
+  }
+  cnt++; inx++;
+  for(; inx < opcodes.count; inx++){
+    op = slice_inx(opcodes, inx);
+    if(str_cstr_cmp(op, "block") == 0 ||
+       str_cstr_cmp(op, "loop") == 0 ||
+       str_cstr_cmp(op, "if") == 0) cnt++;
+    if(str_cstr_cmp(op, "end") == 0) cnt--;
+    // If this is the 'last else' block, you break
+    // Otherwise, just dont count it
+    if(str_cstr_cmp(op, "else") == 0 && cnt == 1) cnt--;
+    if(cnt == 0) break;
+  }
+  if(cnt != 0) return -1;
+  return inx; // Returns the index of the end block, need to do +1 for continuation
+}
 u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice opcodes, Wasm_Data_Slice vars){
   u64_Darray* stk = &cxt->stk;
   u64_Darray* blk_stk = &cxt->blk_stk;
@@ -498,7 +528,12 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       if(comp.di32==0) slice_last(*stk) = val2.du64;
     } else if (str_cstr_cmp(op, "block") == 0){
       // TODO:: It seems that it also takes in 'blocktype' as another argument
-      if(!push_u64_darray(blk_stk, i)){
+      s64 end = find_end_block(opcodes, i);
+      if(end < 0){
+	fprintf(stderr, "Unmatched block found for opcode %zu\n", i);
+	return 0;
+      }
+      if(!push_u64_darray(blk_stk, (u64)end)){
 	fprintf(stderr, "Couldnt push to block/loop stack\n");
 	return 0;
       }
@@ -506,6 +541,58 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       // TODO:: It seems that it also takes in 'blocktype' as another argument
       if(!push_u64_darray(blk_stk, i)){
 	fprintf(stderr, "Couldnt push to block/loop stack\n");
+	return 0;
+      }
+    } else if (str_cstr_cmp(op, "if") == 0){
+      // TODO:: It seems that it also takes in 'blocktype' as another argument
+      Wasm_Data comp;
+      popstk(comp.du64);
+
+      // Find the end of the block first
+      const s64 end1 = find_end_block(opcodes, i);
+      if(end1 < 0){
+	fprintf(stderr, "Unmatched block found for opcode %zu(%.*s)\n",
+		i, str_print(slice_inx(opcodes, i)));
+	return 0;
+      }
+
+      // For != 0 condition, continue but skip to the 'end'
+      // For == 0 condition, if there is 'else' block, continue to that
+      //                     else, go to 'end' directly
+      s64 end2 = end1;
+      if(str_cstr_cmp(slice_inx(opcodes, end1), "else") == 0){
+	end2 = find_end_block(opcodes, end1);
+	if(end2 < 0){
+	  fprintf(stderr, "Unmatched block found for opcode %zu(%.*s)\n",
+		  end1, str_print(slice_inx(opcodes, i)));
+	  return 0;
+	}
+      }
+
+      if(comp.di32 != 0){
+	// Execute if block, after jump to 'end2'
+	if(!push_u64_darray(blk_stk, (u64)end2)){
+	  fprintf(stderr, "Couldnt push to block/loop stack\n");
+	  return 0;
+	}
+      } else if(end1 == end2) {
+	// Directly jump past the 'end' 
+	i = end1;
+      } else {
+	// Jump to the 'end1', set label to 'end2'
+	if(!push_u64_darray(blk_stk, (u64)end2)){
+	  fprintf(stderr, "Couldnt push to block/loop stack\n");
+	  return 0;
+	}
+	i = end1;
+      }
+    } else if (str_cstr_cmp(op, "else") == 0){
+      // TODO:: Always synchronize the behavior with the if block
+      // else when encountered normally, should indicate the end of a 'if' part
+      //  so, simply behave as a break opcode for the top block marker
+      i = slice_inx(*blk_stk, blk_stk->count-1);
+      if(!pop_u64_darray(blk_stk, 1)){
+	fprintf(stderr, "Couldnt pop from block stack\n");
 	return 0;
       }
     } else if (match_str_prefix(op, cstr_to_str("br"))) {
@@ -523,6 +610,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       }
       
       if(to_jmp){
+	// Simply jump to the label, and pop upto before the label
+	// If 'loop' type, also push the label again
+
 	u64 v;
 	if(!parse_as_u64(slice_inx(opcodes, i), &v)){
 	  // TODO:: Also print location of source code
@@ -542,37 +632,16 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	  fprintf(stderr, "Couldnt pop from block stack\n");
 	  return 0;
 	}
+
 	// TODO:: See if break operations can be done by other instruction types
 	const Str label_op = slice_inx(opcodes, i);
-	if((str_cstr_cmp(label_op, "block") != 0) && (str_cstr_cmp(label_op, "loop") != 0)) {
-	  fprintf(stderr, "Only supports 'block' and 'loop' type labels, found '%.*s'\n",
-		  str_print(label_op));
-	  return 0;
-	}
-	// For 'loop' type blocks, you dont need to go to the end block
-	//     but you need to re-push the loop index
+	// For 'loop' type blocks, you need to re-push the loop index
 	if(str_cstr_cmp(label_op, "loop") == 0){
 	  if(!push_u64_darray(blk_stk, i)){
 	    fprintf(stderr, "Couldnt push to block/loop stack\n");
 	    return 0;
 	  }
-	} else {
-	  // Now, search in pairs until you get the 'end'
-	  size_t blk_count = 0;
-	  do{
-	    const Str opcode = slice_inx(opcodes, i);
-	    if(str_cstr_cmp(opcode, "block") == 0) blk_count++;
-	    if(str_cstr_cmp(opcode, "loop") == 0) blk_count++;
-	    if(str_cstr_cmp(opcode, "end") == 0) blk_count--;
-	  } while(blk_count != 0 && (i++) < opcodes.count);
-	  // On reaching the final 'end' value, the blk_count will be 0
-	  // And 'i' will point to the 'end' opcode, but the for loop will go to next
-	  // value and thus, 'end' wont be encountered otherwise
-	  if(blk_count != 0){
-	    fprintf(stderr, "Encountered %zu unmatched blocks\n", blk_count);
-	    return 0;
-	  }
-	}
+	} 
       }
     } else if (str_cstr_cmp(op, "end") == 0){
       // Might need to pop from the stack
@@ -1224,9 +1293,9 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   //Cstr fxn = "abs_diff";
   //Cstr fxn = "pick_branch";
   //Cstr fxn = "fibo";
-  //Cstr fxn = "fibo_rec";
+  Cstr fxn = "fibo_rec";
   //Cstr fxn = "sub";
-  Cstr fxn = "print_sum";
+  //Cstr fxn = "print_sum";
 
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;
@@ -1242,9 +1311,9 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   return;
  found_the_fxn:
   Wasm_Data args[] = {
-    {.tag = WASM_DATA_I32, .di32 = 420},
-    {.tag = WASM_DATA_I32, .di32 = 351},
-    //{.tag = WASM_DATA_I32, .di32 = 7},
+    //{.tag = WASM_DATA_I32, .di32 = 420},
+    //{.tag = WASM_DATA_I32, .di32 = 351},
+    {.tag = WASM_DATA_I32, .di32 = 7},
   };
   for_range(size_t, i, 0, _countof(args)){
     if(!push_u64_darray(&exec_cxt.stk, args[i].du64)){
