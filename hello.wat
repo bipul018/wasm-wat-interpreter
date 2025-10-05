@@ -182,7 +182,10 @@
     i32.const -16711936
     call 4)
   (memory (;0;) 2)
+  (global (;0;) (mut i32) (i32.const 66624))
+  (global (;1;) i32 (i32.const 66624))
   (export "memory" (memory 0))
+  (export "__stack_pointer" (global 0))
   (export "add" (func 8))
   (export "sub" (func 9))
   (export "abs_diff" (func 10))
@@ -191,5 +194,6 @@
   (export "fibo_rec" (func 13))
   (export "print_sum" (func 14))
   (export "run_raylib" (func 15))
+  (export "__heap_base" (global 1))
   (data (;0;) (i32.const 1024) "\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\00\00\ff\ff\00\ff\00\ff\ff\00\00\ff\00\00\00\ff")
   (data (;1;) (i32.const 1056) "'\22\00\002\00\00\003\00\00\004\00\00\005"))

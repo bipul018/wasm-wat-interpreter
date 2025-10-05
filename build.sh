@@ -13,6 +13,8 @@ clang \
 hello.c \
 -o hello.wasm \
 -Wl,--no-entry \
+-Wl,--export=__stack_pointer \
+-Wl,--export=__heap_base \
 -Wl,--export=add \
 -Wl,--export=sub \
 -Wl,--export=abs_diff \
