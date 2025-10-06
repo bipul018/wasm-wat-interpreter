@@ -85,14 +85,14 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
   // Analyze the imports and fill up fxn slice
   size_t fxn_cnt = mod->funcs.count;
   for_slice(mod->imports, i){
-    if(mod->imports.data[i].import_type = FUNCTION_IMPORT_TYPE) fxn_cnt++;
+    if(mod->imports.data[i].import_type == FUNCTION_IMPORT_TYPE) fxn_cnt++;
   }
   cxt.fxns = SLICE_ALLOC(allocr, Wasm_Fxn, fxn_cnt);
   assert(cxt.fxns.data);
 
   fxn_cnt = 0;
   for_slice(mod->imports, i){
-    if(mod->imports.data[i].import_type = FUNCTION_IMPORT_TYPE){
+    if(mod->imports.data[i].import_type == FUNCTION_IMPORT_TYPE){
       // Hardcode the 'printint' fxn for now
       if(str_cstr_cmp(mod->imports.data[i].self_name, "printint") == 0){
 	slice_inx(cxt.fxns, fxn_cnt).fptr = wasm_extern_printint;
