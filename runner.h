@@ -3,6 +3,66 @@
 // The same reason (also lazy) is why no extra includes are done here
 // #pragma once
 
+typedef struct Wasm_Data Wasm_Data;
+struct Wasm_Data {
+  enum {
+    WASM_DATA_VOID=0, // Cannot actually use this to store items
+    WASM_DATA_I32,
+    WASM_DATA_U32,
+    WASM_DATA_F32,
+    WASM_DATA_U64,
+    WASM_DATA_I64,
+  } tag;
+  union{
+    s32 di32;
+    u32 du32;
+    f32 df32;
+    u64 du64;
+    u64 di64;
+  };
+};
+const Cstr wasm_names[] = {
+  [WASM_DATA_I32] = "i32",
+  [WASM_DATA_U32] = "u32",
+  [WASM_DATA_F32] = "f32",
+  [WASM_DATA_U64] = "u64",
+  [WASM_DATA_I64] = "i64",
+  [WASM_DATA_VOID] = "void",
+};
+DEF_SLICE(Wasm_Data);
+
+bool wasm_data_is_signed(Wasm_Data d){
+  return d.tag == WASM_DATA_I32 || d.tag == WASM_DATA_I64;
+}
+bool wasm_data_is_unsigned(Wasm_Data d){
+  return d.tag == WASM_DATA_U32 || d.tag == WASM_DATA_U64;
+}
+bool wasm_data_is_floating(Wasm_Data d){
+  return d.tag == WASM_DATA_F32;
+}
+
+Wasm_Data wasm_data_by_type(const Str type_name){
+  Wasm_Data d = {0};
+  for_range(size_t, i, 0, _countof(wasm_names)){
+    if(str_cstr_cmp(type_name, wasm_names[i]) == 0){
+      d.tag = i;
+    }
+  }
+  return d;
+}
+void wasm_data_print(Wasm_Data d){
+  printf("%s(", wasm_names[d.tag]);
+  switch(d.tag){
+  case WASM_DATA_I32: {printf("%ld", (long)d.di32); break;}
+  case WASM_DATA_U32: {printf("%lu", (unsigned long)d.du32); break;}
+  case WASM_DATA_F32: {printf("%f", (float)d.df32); break;}
+  case WASM_DATA_U64: {printf("%llu", (long long unsigned)d.du64); break;}
+  case WASM_DATA_I64: {printf("%lld", (long long)d.di64); break;}
+  }
+  printf(") ");
+}
+
+
 
 // Load a partiucular data section
 bool load_data_to_memory(Memory_Region* mem, const Data* data_sec){
@@ -53,8 +113,11 @@ struct Exec_Context {
   u64_Darray stk;
   u64_Darray blk_stk;
 
+  // TODO:: When doing multithreading, linear memory might need to be made a pointer
   Memory_Region mem;
   Wasm_Fxn_Slice fxns;
+  // TODO:: Implement immutability
+  Wasm_Data_Slice globals;
 };
 
 Wasm_Fxn_Ptr wasm_fxn_executor; // Used to make calls to a wasm fxn, expects param in stk
@@ -79,6 +142,48 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
     printf("Initializing the memory with data section %zu...\n", i);
     if(!load_data_to_memory(&cxt.mem, mod->data_sections.data+i)){
       printf("   ... Loading data section at %zu failed!!!\n", i);
+    }
+  }
+
+  // Initialize globals
+  // TODO:: Maybe make it modular
+  // Only simple data type globals are supported for now
+  if(mod->globals.count > 0){
+    cxt.globals = SLICE_ALLOC(allocr, Wasm_Data, mod->globals.count);
+    assert(cxt.globals.data);
+    for_slice(mod->globals, i){
+      const Global* glbl = mod->globals.data + i;
+      // TODO:: Implement immutability someday somehow
+      slice_inx(cxt.globals, i) = wasm_data_by_type(glbl->valtype->data);
+      if(!match_str_suffix(glbl->expr->data, cstr_to_str(".const"))){
+	fprintf(stderr, "Only const type global expressions supported, found `%.*s`\n",
+		str_print(glbl->expr->data));
+	// TODO:: Maybe stop working, for now its initialized to 0
+      } else {
+	Wasm_Data* d = cxt.globals.data + i;
+	if(wasm_data_is_signed(*d)){
+	  if(!parse_as_s64(slice_first(glbl->expr->children)->data, &d->di64)){
+	    fprintf(stderr, "Couldnt parse `%.*s` as signed integer\n",
+		    str_print(slice_first(glbl->expr->children)->data));
+	  } else {
+	    if(d->tag == WASM_DATA_I32){
+	      d->di32 = d->di64;
+	    }
+	  }
+	}else if(wasm_data_is_unsigned(*d)){
+	  if(!parse_as_s64(slice_first(glbl->expr->children)->data, &d->du64)){
+	    fprintf(stderr, "Couldnt parse `%.*s` as unsigned integer\n",
+		    str_print(slice_first(glbl->expr->children)->data));
+	  } else {
+	    if(d->tag == WASM_DATA_U32){
+	      d->du32 = d->du64;
+	    }
+	  }
+	}else{
+	  fprintf(stderr, "We dont support wasm data global for %s\n",
+		  wasm_names[d->tag]);
+	}
+      }
     }
   }
 
@@ -138,40 +243,6 @@ u64 dummy_import_fxn(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   return 0;
 }
 
-typedef struct Wasm_Data Wasm_Data;
-struct Wasm_Data {
-  enum {
-    WASM_DATA_VOID=0, // Cannot actually use this to store items
-    WASM_DATA_I32,
-    WASM_DATA_U32,
-    WASM_DATA_F32,
-    WASM_DATA_U64,
-  } tag;
-  union{
-    s32 di32;
-    u32 du32;
-    f32 df32;
-    u64 du64;
-  };
-};
-const Cstr wasm_names[] = {
-  [WASM_DATA_I32] = "i32",
-  [WASM_DATA_U32] = "u32",
-  [WASM_DATA_F32] = "f32",
-  [WASM_DATA_U64] = "u64",
-  [WASM_DATA_VOID] = "void",
-};
-DEF_SLICE(Wasm_Data);
-
-Wasm_Data wasm_data_by_type(const Str type_name){
-  Wasm_Data d = {0};
-  for_range(size_t, i, 0, _countof(wasm_names)){
-    if(str_cstr_cmp(type_name, wasm_names[i]) == 0){
-      d.tag = i;
-    }
-  }
-  return d;
-}
 
 u64 wasm_extern_printint(Alloc_Interface allocr, Exec_Context* cxt, void* d){
   (void)allocr;
@@ -350,6 +421,13 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
   // TODO:: Care about the result ?
   // Go through the opcodes?
   for_slice(opcodes, i){
+
+    if(cycles > 20){
+      printf("reached > 20 cycles, quitting for now\n");
+      return 0;
+    }
+
+    
     const Str op = slice_inx(opcodes, i);
     if(str_cstr_cmp(op, "local.get") == 0){
       // TODO:: Find if there is some better way of validating types
@@ -410,6 +488,46 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       // Arguments are validated already
       // Get the value from stack and then pop it
       popstk(slice_inx(vars,inx).du64);
+    } else if(str_cstr_cmp(op, "global.get") == 0){
+      // TODO:: Find if there is some better way of validating types
+      i++; // maybe verify that its not ended yet ??
+      u64 inx;
+      if(!parse_as_u64(slice_inx(opcodes, i), &inx)){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+		i, str_print(slice_inx(opcodes, i)));
+	return 0;
+      }
+      // See if the index exists
+      if(inx >= cxt->globals.count){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Tried to access %zu-th global when only %zu globals are present\n",
+		inx, cxt->globals.count);
+	return 0;
+	
+      }
+      // Arguments are validated already
+      pushstk(slice_inx(cxt->globals, inx).du64);
+    } else if (str_cstr_cmp(op, "global.set") == 0){
+      // TODO:: Find if theres some better way of validating types
+      i++; // maybe verify that its not ended yet ??
+      u64 inx;
+      if(!parse_as_u64(slice_inx(opcodes, i), &inx)){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+		i, str_print(slice_inx(opcodes, i)));
+	return 0;
+      }
+      // See if the index exists
+      if(inx >= cxt->globals.count){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Tried to access %zu-th global when only %zu globals are present\n",
+		inx, cxt->globals.count);
+	return 0;
+      }
+      // Arguments are validated already
+      // Get the value from stack and then pop it
+      popstk(slice_inx(cxt->globals,inx).du64);
     } else if (str_cstr_cmp(op, "i32.const") == 0){
       i++; // maybe verify that its not ended yet ??
       s64 v;
@@ -421,6 +539,18 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       }
       Wasm_Data p = {0};
       p.di32 = v;
+      pushstk(p.du64);
+    } else if (str_cstr_cmp(op, "i64.const") == 0){
+      i++; // maybe verify that its not ended yet ??
+      s64 v;
+      if(!parse_as_s64(slice_inx(opcodes, i), &v)){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+		i, str_print(slice_inx(opcodes, i)));
+	return 0;
+      }
+      Wasm_Data p = {0};
+      p.di64 = v;
       pushstk(p.du64);
     } else if (str_cstr_cmp(op, "i32.load") == 0){
       // In this case, lets pop stack value first before seeing arguments
@@ -457,7 +587,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       base = (Wasm_Data){0};
       base.di32 = data;
       pushstk(base.du64);
-    } else if (str_cstr_cmp(op, "i32.store") == 0){
+    } else if (match_str_suffix(op, cstr_to_str("store"))) {
+    //} else if (str_cstr_cmp(op, "i32.store") == 0){
+
       // During storage, the stack at top contains the data, then the
       //   dynamic offset where to store, other format of the instruction is same
       //   so, copy-pasting is almost okay for store and load
@@ -491,8 +623,17 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	i--; 
       }
 
-      // Now simply store the data 
-      (void)memory_rgn_write(mem, offset, sizeof(to_store.di32), &to_store.di32);
+      // Now simply store the data
+      if (str_cstr_cmp(op, "i64.store") == 0){
+	(void)memory_rgn_write(mem, offset, sizeof(to_store.di64), &to_store.di64);
+      } else if (str_cstr_cmp(op, "i32.store") == 0){
+	(void)memory_rgn_write(mem, offset, sizeof(to_store.di32), &to_store.di32);
+      } else {
+	fprintf(stderr, "Not supported `%.*s` storage operation\n",
+		str_print(op));
+	return 0;
+      }
+
     } else if (str_cstr_cmp(op, "i32.sub") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -724,23 +865,18 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
     printf_stk(*stk, "After opcode %zu (%.*s) : ",
 	       i, str_print(op));
     printf("  { ");
-    for_slice(vars, i){
-      const Wasm_Data d = slice_inx(vars,i);
-      printf("%s(", wasm_names[d.tag]);
-      switch(d.tag){
-      case WASM_DATA_I32: {printf("%ld", (long)d.di32); break;}
-      case WASM_DATA_U32: {printf("%lu", (unsigned long)d.du32); break;}
-      case WASM_DATA_F32: {printf("%f", (float)d.df32); break;}
-      case WASM_DATA_U64: {printf("%llu", (long long unsigned)d.du64); break;}
-      }
-      printf(") ");
-    }
+    for_slice(vars, i) wasm_data_print(slice_inx(vars, i));
     printf("}\n");
 
     if(match_str_suffix(op, cstr_to_str("load")) || 
        match_str_suffix(op, cstr_to_str("store"))){
       printf("    ");
       memory_rgn_dump(mem);
+      printf("\n");
+    }
+    if(match_str_prefix(op, cstr_to_str("global"))){
+      printf("    Globals: ");
+      for_slice(cxt->globals, i) wasm_data_print(slice_inx(cxt->globals, i));
       printf("\n");
     }
     
@@ -827,6 +963,7 @@ u64 window_should_close(Alloc_Interface, Exec_Context* cxt, void* data){
 u64 draw_fps(Alloc_Interface, Exec_Context* cxt, void* data){
   // Two int32 args
   if(cxt->stk.count < 2) errnret(0, "Drawing fps needs 2 args, (posx,posy)\n");
+  // THIS ORDER IS PROB WRONG
   Wasm_Data px={0},py={0},fsz={0};
   px.du64 = slice_last(cxt->stk);
   if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
@@ -834,6 +971,83 @@ u64 draw_fps(Alloc_Interface, Exec_Context* cxt, void* data){
   if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
 
   DrawFPS(px.di32, py.di32);
+  return 1;
+}
+u64 printstr(Alloc_Interface, Exec_Context* cxt, void* data){
+  // Two int32 args: first pointer to cstr, second pointer to varargs
+  if(cxt->stk.count < 2) errnret(0, "printstr needs 2 args, (cstr,varargs)\n");
+  Wasm_Data cstr={0},varargs={0};
+  varargs.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  cstr.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+
+
+  // For now, go character by character?
+  // TODO:: Figure out some better more optimal way
+  size_t off = cstr.di32;
+  // TODO:: Also for the vararg
+  size_t argoff = varargs.di32;
+
+  while(1){
+    if((off - cstr.di32) > 4096){
+      fprintf(stderr, "Likely a lack of end null byte!\n");
+      return 0;
+    }
+    u8 ch;
+
+#define read_one_char()					\
+    do{							\
+      if(!memory_rgn_read(&cxt->mem, off, 1, &ch)){		\
+	fprintf(stderr, "Couldnt read at %zu\n", off);	\
+	return 0;					\
+      }							\
+      off++;\
+    }while(0)
+
+    read_one_char();
+    if(ch == 0) break;
+
+    if(ch == '%'){
+      read_one_char();
+      if(ch == 'd'){
+	s32 v;
+	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
+	  fprintf(stderr, "Couldnt read at %zu\n", argoff);
+	  return 0;
+	}
+	argoff+=sizeof(s32);
+	printf("%ld", (long)v);
+      } else if(ch == 's') {
+	s32 v;
+	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
+	  fprintf(stderr, "Couldnt read at %zu\n", argoff);
+	  return 0;
+	}
+	argoff+=sizeof(s32);
+
+	const size_t bkp_off = off;
+	const size_t str_off = v;
+	off=v;
+	while(1){
+	  if((off - str_off) > 4096){
+	    fprintf(stderr, "Likely a lack of end null byte!\n");
+	    return 0;
+	  }
+	  read_one_char();
+	  if(ch == 0) break;
+	  printf("%c", ch);
+	}
+	off = bkp_off;
+      } else {
+	printf("%%%c", ch);
+      }
+    } else {
+      printf("%c", ch);
+    }
+
+#undef read_one_char
+  }
   return 1;
 }
 
@@ -859,11 +1073,15 @@ void patch_imports(Exec_Context* cxt){
       else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "draw_fps") == 0){
 	slice_inx(cxt->fxns, i).fptr = draw_fps;
       }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "printstr") == 0){
+	slice_inx(cxt->fxns, i).fptr = printstr;
+      }
     }
   }
 }
 
 
+// TODO:: Fix the __stack_pointer also if it exists (or force it to exist)
 void run_sample(Alloc_Interface allocr, Module* mod){
   Exec_Context exec_cxt = init_exec_context(allocr, mod);
   patch_imports(&exec_cxt);
@@ -876,6 +1094,7 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   //Cstr fxn = "sub";
   //Cstr fxn = "print_sum";
   Cstr fxn = "run_raylib";
+  //Cstr fxn = "main_";
 
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;
@@ -894,6 +1113,8 @@ void run_sample(Alloc_Interface allocr, Module* mod){
     //{.tag = WASM_DATA_I32, .di32 = 420},
     //{.tag = WASM_DATA_I32, .di32 = 351},
     {.tag = WASM_DATA_I32, .di32 = 12},
+    //{.tag = WASM_DATA_I32, .di32 = 0},
+    //{.tag = WASM_DATA_I32, .di32 = 0},
   };
   for_range(size_t, i, 0, _countof(args)){
     if(!push_u64_darray(&exec_cxt.stk, args[i].du64)){

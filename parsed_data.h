@@ -74,10 +74,10 @@ bool parse_data(Alloc_Interface allocr, Parse_Node* root, Data* dat){
 		  (i+1)<escaped_bytes.count &&
 		  isxdigit(slice_inx(escaped_bytes, i+1))) {
 	    // TODO:: Support capital hex chars also later
-	    u32 v1 = isdigit(in)?(in - '0'):(in-'a');
+	    u32 v1 = isdigit(in)?(in - '0'):(in-'a'+10);
 	    i++;
 	    u8 in2 = slice_inx(escaped_bytes, i);
-	    u32 v2 = isdigit(in2)?(in2-'0'):(in2-'a');
+	    u32 v2 = isdigit(in2)?(in2-'0'):(in2-'a'+10);
 
 	    out = (v1 << 4) | v2;
 	  }

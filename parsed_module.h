@@ -12,6 +12,7 @@ struct Module {
   Func_Slice funcs; // Something else will have to build the final fxn list
   Export_Slice exports;
   Import_Slice imports; // Something else will have to build the final fxn list
+  Global_Slice globals;
   Data_Slice data_sections;
   // All the unknown children are saved here, which at the beginning, is all of them
   // The data inside these will directly refer to the parser,
@@ -52,14 +53,16 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
   Export_Darray         exports       = {.allocr=allocr};
   Import_Darray         imports       = {.allocr=allocr};
   Data_Darray           data_sections = {.allocr=allocr};
+  Global_Darray         globals       = {.allocr=allocr};
 
   for_slice(root->children, i){
-    Parse_Node* child = root->children.data[i];
-    Type typ = {0};
-    Func func = {0};
-    Export expt = {0};
-    Import impt = {0};
-    Data dat = {0};
+    Parse_Node*  child	= root->children.data[i];
+    Type	 typ	= {0};
+    Func	 func	= {0};
+    Export	 expt	= {0};
+    Import	 impt	= {0};
+    Data	 dat	= {0};
+    Global	 glbl	= {0};
     if(parse_type(allocr, child, &typ)){
       if(!push_Type_darray(&types, typ)){
         fprintf(stderr, "Couldnt allocate memory !!!\n");
@@ -90,6 +93,12 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
         goto was_error;
       }
     }
+    else if(parse_global(allocr, child, &glbl)){
+      if(!push_Global_darray(&globals, glbl)){
+        fprintf(stderr, "Couldnt allocate memory !!!\n");
+        goto was_error;
+      }
+    }
     else{
       if(!push_Parse_Node_Ptr_darray(&unknowns, child)){
         fprintf(stderr, "Couldnt allocate memory !!!\n");
@@ -104,16 +113,18 @@ bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
   mod->unknowns = (Parse_Node_Ptr_Slice){.data = unknowns.data, .count = unknowns.count};
   mod->exports = (Export_Slice){.data=exports.data, .count=exports.count};
   mod->imports = (Import_Slice){.data=imports.data, .count=imports.count};
+  mod->globals = (Global_Slice){.data=globals.data, .count=globals.count};
   mod->data_sections = (Data_Slice){.data=data_sections.data, .count=data_sections.count};
 
   return true;
  was_error:
-  (void)resize_Import_darray(&imports, 0);
-  (void)resize_Export_darray(&exports, 0);
-  (void)resize_Parse_Node_Ptr_darray(&unknowns, 0);
-  (void)resize_Type_darray(&types, 0);
-  (void)resize_Func_darray(&funcs, 0);
-  (void)resize_Data_darray(&data_sections, 0);
+  (void)resize_Import_darray        (&imports,      0);
+  (void)resize_Export_darray        (&exports,      0);
+  (void)resize_Parse_Node_Ptr_darray(&unknowns,     0);
+  (void)resize_Type_darray          (&types,        0);
+  (void)resize_Func_darray          (&funcs,        0);
+  (void)resize_Global_darray        (&globals,      0);
+  (void)resize_Data_darray          (&data_sections,0);
   return false;
 }
 
@@ -144,6 +155,11 @@ void try_printing_module(const Module* mod){
   for_slice(mod->funcs, i){
     printf("%zu: ", i);
     try_printing_func(mod->funcs.data + i);
+  }
+  printf("The module has %zu globals: \n", mod->globals.count);
+  for_slice(mod->globals, i){
+    printf("%zu: ", i);
+    try_printing_global(mod->globals.data + i);
   }
   printf("The module has %zu unknowns: ", mod->unknowns.count);
   for_slice(mod->unknowns, i){

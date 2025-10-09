@@ -66,6 +66,7 @@ bool match_str_suffix(Str haystack, Str needle){
 #include "parsed_exports.h" 
 #include "parsed_imports.h"
 #include "parsed_data.h"
+#include "parsed_global.h"
 #include "parsed_module.h"
 
 // Try to run a given function
@@ -79,6 +80,7 @@ int main(void){
   //parse_node_iter_run_demo(allocr);
 
   Parse_Info parser = init_parse_info(allocr, "hello.wat");
+  //Parse_Info parser = init_parse_info(allocr, "1brc/1brc.wat");
 
   // printf("Printing the file by lines: \n");
   // for_slice(parser.line_nums, ln){
@@ -109,7 +111,7 @@ int main(void){
     printf("Couldnt parse the main module!!!\n");
     return 1;
   }
-  try_printing_module(&main_module);
+  //try_printing_module(&main_module);
 
   //run_memory_page_sample(allocr);
 

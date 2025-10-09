@@ -78,7 +78,7 @@ void run_raylib(int dummy_arg){
   int inx = 0;
   const int steps = 100;
 
-  //printstr("Hello, beginning the operation now %d %d\n", 0xf3, 0x4a);
+  printstr("Hello, beginning the %s operation now %d %d\n", "printing", 0xf3, 0x4a);
 
   while(window_should_close() == 0){
     begin_drawing();
