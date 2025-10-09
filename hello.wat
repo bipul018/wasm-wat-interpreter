@@ -158,7 +158,7 @@
     local.get 0
     i32.const 1056
     i32.store
-    i32.const 1065
+    i32.const 1067
     local.get 0
     call 2
     call 3
@@ -233,5 +233,5 @@
   (export "__memory_base" (global 9))
   (export "__table_base" (global 10))
   (export "__wasm_first_page_end" (global 11))
-  (data (;0;) (i32.const 1024) "\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\00\00\ff\ff\00\ff\00\ff\ff\00\00\ff\00\00\00\ffprinting\00Hello, beginning the %s operation now %d %d\0a\00")
+  (data (;0;) (i32.const 1024) "\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\00\00\ff\ff\00\ff\00\ff\ff\00\00\ff\00\00\00\ff<printing>\00Hello, beginning the %s operation now %d %d\0a\00")
   (data (;1;) (i32.const 1120) "'\22\00\002\00\00\003\00\00\004\00\00\005\00\00\00"))

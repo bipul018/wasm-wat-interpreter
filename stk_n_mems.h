@@ -142,7 +142,7 @@ bool memory_rgn_ensure(Memory_Region* mem, size_t off, size_t size){
     }
     // TODO:: Maybe memset some values ?
     mem_page->inx = iter.page_inx;
-    memset(mem_page->data, 1, MEMORY_PAGE_SIZE);
+    memset(mem_page->data, 0xcc, MEMORY_PAGE_SIZE);
   found_this_page:
   }
   return true;

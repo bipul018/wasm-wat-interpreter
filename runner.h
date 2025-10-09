@@ -422,8 +422,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
   // Go through the opcodes?
   for_slice(opcodes, i){
 
-    if(cycles > 20){
-      printf("reached > 20 cycles, quitting for now\n");
+    if(cycles > 45){
+      printf("reached > 45 cycles, quitting for now\n");
       return 0;
     }
 
@@ -552,88 +552,63 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       Wasm_Data p = {0};
       p.di64 = v;
       pushstk(p.du64);
-    } else if (str_cstr_cmp(op, "i32.load") == 0){
+    } else if (match_str_suffix(op, cstr_to_str("load")) ||
+	       match_str_suffix(op, cstr_to_str("store"))){
+      Wasm_Data val; // For store, these are first popped from stack
+
+      const bool to_load = match_str_suffix(op, cstr_to_str("load"));
+      if(!to_load) popstk(val.du64);
+
+      // Common part of store and load
       // In this case, lets pop stack value first before seeing arguments
       Wasm_Data base = {0};
       popstk(base.du64);
-      s64 offset = base.di32; //The memory address to load from
+      s64 offset = base.di32; //The memory address to load/store to
 
-      i++;
-      Str oparg = slice_inx(opcodes, i);
-      // Parse the offset, for now, dont expect alignment
-      Cstr name = "offset=";
-      // Expect this at the first, then parse
-      Str pref = str_slice(oparg, 0, strlen(name));
-      // The offset=<>;alignmeht=<>; might be optional, so, for now
-      //  If the next op name doesnt begin with offset=, treat it as missing
-      if(cstr_str_cmp(name, pref) == 0){
-	oparg = str_slice(oparg, strlen(name), oparg.count);
-	u64 off;
-	if(!parse_as_u64(oparg, &off)){
-	  fprintf(stderr, "Cannot process anything other than `offset=<u32>`"
-		  " for i32.load, found `%.*s`\n", str_print(pref));
-	  return 0;
+      // Do twice, once expecting offset=, another expecting alignment=
+      for_range(size_t, ii, 0, 2){
+	if((i+1)<opcodes.count){
+	  Str maybearg = slice_inx(opcodes, i+1);
+	  if(match_str_prefix(maybearg, cstr_to_str("offset="))){
+	    maybearg = str_slice(maybearg, strlen("offset="), maybearg.count);
+	    u64 off;
+	    if(!parse_as_u64(maybearg, &off)){
+	      fprintf(stderr, "Expected `offset=<u32>`, found `offset=%.*s`\n",
+		      str_print(maybearg));
+	      return 0;
+	    }
+	    // Adding the constant offset 
+	    offset += off;
+	    i++;
+	  }else if(match_str_prefix(maybearg, cstr_to_str("align="))){
+	    // TODO:: Someday care about alignment
+	    i++;
+	  }else {break;}
 	}
-	// Adding the constant offset 
-	offset += off;
-      } else {
-	i--; 
       }
+      void* pdata=nullptr;
+      size_t sz_dt=0;
+#define fill_ptr_n_size(prefix, item)			\
+      do{						\
+	if(match_str_prefix(op, cstr_to_str(prefix))){	\
+	  pdata = &val.item;				\
+	  sz_dt = sizeof(val.item);			\
+	}						\
+      }while(0)
+      fill_ptr_n_size("i32", di32);
+      fill_ptr_n_size("u32", du32);
+      fill_ptr_n_size("i64", di64);
+      fill_ptr_n_size("u64", du64);
+      fill_ptr_n_size("f32", df32);
+      // TODO:: Handle when none of the values match
+#undef fill_ptr_n_size
 
-      // This offset is the data
-      s32 data = 69;
-      memory_rgn_read(mem, offset, sizeof(data), &data);
-      // Now push it
-      base = (Wasm_Data){0};
-      base.di32 = data;
-      pushstk(base.du64);
-    } else if (match_str_suffix(op, cstr_to_str("store"))) {
-    //} else if (str_cstr_cmp(op, "i32.store") == 0){
-
-      // During storage, the stack at top contains the data, then the
-      //   dynamic offset where to store, other format of the instruction is same
-      //   so, copy-pasting is almost okay for store and load
-      Wasm_Data to_store = {0};
-      popstk(to_store.du64);
-      
-      // In this case, lets pop stack value first before seeing arguments
-      Wasm_Data base = {0};
-      popstk(base.du64);
-      s64 offset = base.di32; //The memory address to store to
-
-      i++;
-      Str oparg = slice_inx(opcodes, i);
-      // Parse the offset, for now, dont expect alignment
-      Cstr name = "offset=";
-      // Expect this at the first, then parse
-      Str pref = str_slice(oparg, 0, strlen(name));
-      // The offset=<>;alignmeht=<>; might be optional, so, for now
-      //  If the next op name doesnt begin with offset=, treat it as missing
-      if(cstr_str_cmp(name, pref) == 0){
-	oparg = str_slice(oparg, strlen(name), oparg.count);
-	u64 off;
-	if(!parse_as_u64(oparg, &off)){
-	  fprintf(stderr, "Cannot process anything other than `offset=<u32>`"
-		  " for i32.store, found `%.*s`\n", str_print(pref));
-	  return 0;
-	}
-	// Adding the constant offset 
-	offset += off;
+      if(to_load) {
+	(void)memory_rgn_read(mem, offset, sz_dt, pdata);
+	pushstk(val.du64);
       } else {
-	i--; 
+	(void)memory_rgn_write(mem, offset, sz_dt, pdata);
       }
-
-      // Now simply store the data
-      if (str_cstr_cmp(op, "i64.store") == 0){
-	(void)memory_rgn_write(mem, offset, sizeof(to_store.di64), &to_store.di64);
-      } else if (str_cstr_cmp(op, "i32.store") == 0){
-	(void)memory_rgn_write(mem, offset, sizeof(to_store.di32), &to_store.di32);
-      } else {
-	fprintf(stderr, "Not supported `%.*s` storage operation\n",
-		str_print(op));
-	return 0;
-      }
-
     } else if (str_cstr_cmp(op, "i32.sub") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
