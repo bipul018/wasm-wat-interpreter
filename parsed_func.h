@@ -212,19 +212,19 @@ u32 func_param_res_count(Str opcode){
 
   // Now count how many units are there
   u32 cnt = 0;
-  while(true){
-    // First skip the 'result'/'param' 
-    while(!isspace(slice_first(opcode)) && slice_first(opcode) != '('){
+  while(opcode.count > 0){
+    // First skip the 'result'/'param'
+    while(opcode.count > 0 &&
+	  !isspace(slice_first(opcode)) &&
+	  slice_first(opcode) != '('){
       opcode = str_slice(opcode, 1, opcode.count-1);
     }
     // Then skip all whitespaces and comments
     opcode = skip_ws_and_comment(opcode);
     // If there are some items left, then it is counted as a unit
     //    (I know this is not accurate, but I dont want to parse it yet)
-    if(opcode.count == 0) break;
     cnt++;
     // After counting this, skip that found thing just as the 'result'/'param' is skipped
   }
-  
   return cnt;
 }

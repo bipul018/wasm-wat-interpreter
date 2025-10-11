@@ -21,6 +21,12 @@ struct Wasm_Data {
     u64 di64;
   };
 };
+// Just in case, to prevent any undefined behavior
+static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, di32));
+static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, du32));
+static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, df32));
+static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, du64));
+static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, di64));
 const Cstr wasm_names[] = {
   [WASM_DATA_I32] = "i32",
   [WASM_DATA_U32] = "u32",
@@ -121,6 +127,7 @@ struct Exec_Context {
 
   // Runtime metadata
   bool trace;
+  bool trace_vars;
   u64 cycle_limit;
 };
 
@@ -139,6 +146,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
     .stk={.allocr=allocr},
     .blk_stk={.allocr=allocr},
     .trace = false,
+    .trace_vars = false,
     .cycle_limit = 0,
   };
   cxt.mem = memory_rgn_init(allocr);
@@ -395,27 +403,30 @@ static s64 find_end_block(Str_Slice opcodes, size_t inx){
   return inx; // Returns the index of the end block, need to do +1 for continuation
 }
 // A function to help handle block stack and its items
-u64 visit_new_blk(u64_Darray* stk, size_t opn, size_t blk_argn){
+u64 visit_new_blk(u64_Darray* stk, size_t opn, u16 paramn, u16 retn){
   // Combines the stk location (if enough) and opcode number and returns
   //  the thing needed to push onto the block stack
-
   // Returns (u64)-1 if some error happens (will also print to stderr)
-
   assert(stk);
-  if(stk->count < blk_argn){
+  if(stk->count < paramn){
     fprintf(stderr, "Expected %zu arguments but found only %zu items on stack\n",
-	    blk_argn, stk->count);
+	    (size_t)paramn, stk->count);
     return (u64)-1;
   }
-
-  u64 distval = 0;
-  u32* ptr = (u32*)&distval; // TODO:: Use a union or something someday
-  ptr[0] = stk->count - blk_argn; // The supposed count of stack without return values
-  ptr[1]= opn;
-
-  return distval;
+  // Pack all the data in a single u64
+  // [--- 32 bits stk ---][--- 24 bits opcode num ---][--- 8 bits ret count ---]
+  // This does pose a limit for opcode count and such, but we dont care
+  // Currently not reasearching the bitpacked structs and such (idk)
+  if(opn > (1ULL<<24ULL)){
+    fprintf(stderr, "Too high opcode number referenced during block visitation\n");
+    return (u64)-1;
+  }
+  u64 v = retn & ((1<<8)-1);
+  v = v | (opn<<8);
+  v = v | (((u64)(stk->count-paramn)) << (u64)32);
+  return v;
 }
-size_t break_old_blk(u64_Darray* stk, u64 label, size_t blk_retn){
+size_t break_old_blk(u64_Darray* stk, u64 label){
   // Given the 'label', it decomposes that into the two values, stk pos and opcode number
   // For the stk pos, it then adjusts the stk value (if possible) and saves just the
   // return value amount
@@ -423,12 +434,15 @@ size_t break_old_blk(u64_Darray* stk, u64 label, size_t blk_retn){
 
   // On error (stack problem), it prints error and returns (size_t)-1
   assert(stk);
-  const u32* ptr = (u32*)&label;
-  u32 stkcnt = ptr[0];
-  u32 opn = ptr[1];
+
+  const u8 blk_retn = label & ((1<<8)-1);
+  label = (label ^ blk_retn)>>8;
+  const u32 opn = label & ((((u32)1)<<((u32)24))-1);
+  label = (label ^ opn)>>((u32)24);
+  const u32 stkcnt = label;
 
   if(stk->count < (stkcnt+blk_retn)){
-    fprintf(stderr, "Stack violation, expected at least %zu items, found %zu on stack\n",
+    fprintf(stderr, "Stack violation, expected at least %u items, found %zu on stack\n",
 	    (stkcnt+blk_retn), stk->count);
     return (size_t)(-1);
   }
@@ -466,10 +480,31 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       return 0;								\
     }									\
   }while(0)
+
+#define pushblk_stk(v)					\
+  do{							\
+    if(!push_u64_darray(blk_stk, (v))){			\
+      fprintf(stderr, "Couldnt push to block stack\n");	\
+      return 0;						\
+    }							\
+  }while(0)
+#define popblk_stk(v)							\
+  do{									\
+    if(blk_stk->count == 0){							\
+      fprintf(stderr, "Couldnt pop argument, block stack underflow\n");	\
+      return 0;								\
+    }									\
+    (v) = slice_last(*blk_stk);						\
+    if(!pop_u64_darray(blk_stk, 1)){					\
+      fprintf(stderr, "Couldnt pop argument, memory error\n");		\
+      return 0;								\
+    }									\
+  }while(0)
   
   u64 cycles = 0;
 
   const bool trace = cxt->trace;
+  const bool trace_vars = cxt->trace_vars;
   const u64 cycle_limit = cxt->cycle_limit;
   if(trace){
     printf_stk(*stk, "Running function, the current stack is : ");
@@ -757,20 +792,57 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	fprintf(stderr, "Unmatched block found for opcode %zu\n", i);
 	return 0;
       }
-      if(!push_u64_darray(blk_stk, (u64)end)){
-	fprintf(stderr, "Couldnt push to block/loop stack\n");
-	return 0;
+      u64 pcnt = 0;
+      u64 retcnt = 0;
+      for(int it = 1; it < 3; it++){
+	if((i+it)>=opcodes.count) break;
+	const Str v = slice_inx(opcodes, i+it);
+	if(match_str_prefix(v, "param")){
+	  pcnt = func_param_res_count(v);
+	}else if(match_str_prefix(v, "result")){
+	  retcnt = func_param_res_count(v);
+	}else{
+	  // TODO:: Support type indices also
+	  break;
+	}
       }
+      pushblk_stk(visit_new_blk(stk, end, pcnt, retcnt));
     } else if (str_cstr_cmp(op, "loop") == 0){
-      // TODO:: It seems that it also takes in 'blocktype' as another argument
-      if(!push_u64_darray(blk_stk, i)){
-	fprintf(stderr, "Couldnt push to block/loop stack\n");
-	return 0;
+      // TODO:: Figure out how loops param work actually 
+      u64 pcnt = 0;
+      u64 retcnt = 0;
+      for(int it = 1; it < 3; it++){
+	if((i+it)>=opcodes.count) break;
+	const Str v = slice_inx(opcodes, i+it);
+	if(match_str_prefix(v, "param")){
+	  pcnt = func_param_res_count(v);
+	}else if(match_str_prefix(v, "result")){
+	  retcnt = func_param_res_count(v);
+	}else{
+	  // TODO:: Support type indices also
+	  break;
+	}
       }
+      pushblk_stk(visit_new_blk(stk, i, pcnt, retcnt));
     } else if (str_cstr_cmp(op, "if") == 0){
       // TODO:: It seems that it also takes in 'blocktype' as another argument
       Wasm_Data comp;
       popstk(comp.du64);
+
+      u64 pcnt = 0;
+      u64 retcnt = 0;
+      for(int it = 1; it < 3; it++){
+	if((i+it)>=opcodes.count) break;
+	const Str v = slice_inx(opcodes, i+it);
+	if(match_str_prefix(v, "param")){
+	  pcnt = func_param_res_count(v);
+	}else if(match_str_prefix(v, "result")){
+	  retcnt = func_param_res_count(v);
+	}else{
+	  // TODO:: Support type indices also
+	  break;
+	}
+      }
 
       // Find the end of the block first
       const s64 end1 = find_end_block(opcodes, i);
@@ -795,30 +867,22 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 
       if(comp.di32 != 0){
 	// Execute if block, after jump to 'end2'
-	if(!push_u64_darray(blk_stk, (u64)end2)){
-	  fprintf(stderr, "Couldnt push to block/loop stack\n");
-	  return 0;
-	}
+	pushblk_stk(visit_new_blk(stk, end2, pcnt, retcnt));
       } else if(end1 == end2) {
 	// Directly jump past the 'end' 
 	i = end1;
       } else {
 	// Jump to the 'end1', set label to 'end2'
-	if(!push_u64_darray(blk_stk, (u64)end2)){
-	  fprintf(stderr, "Couldnt push to block/loop stack\n");
-	  return 0;
-	}
+	pushblk_stk(visit_new_blk(stk, end2, pcnt, retcnt));
 	i = end1;
       }
     } else if (str_cstr_cmp(op, "else") == 0){
       // TODO:: Always synchronize the behavior with the if block
       // else when encountered normally, should indicate the end of a 'if' part
       //  so, simply behave as a break opcode for the top block marker
-      i = slice_inx(*blk_stk, blk_stk->count-1);
-      if(!pop_u64_darray(blk_stk, 1)){
-	fprintf(stderr, "Couldnt pop from block stack\n");
-	return 0;
-      }
+      u64 v;
+      popblk_stk(v);
+      i = break_old_blk(stk, v);
     } else if (match_str_prefix(op, cstr_to_str("br"))) {
       // The first argument is the number of labels(blocks) to pop
       i++; // maybe verify that its not ended yet ??
@@ -850,7 +914,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	  return 0;	  
 	}
 
-	i = slice_inx(*blk_stk, blk_stk->count-v-1);
+	u64 label = slice_inx(*blk_stk, blk_stk->count-v-1);
+	i = break_old_blk(stk, label);
 	// Now do the jump operation
 	if(!pop_u64_darray(blk_stk, v+1)){
 	  fprintf(stderr, "Couldnt pop from block stack\n");
@@ -861,18 +926,29 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	const Str label_op = slice_inx(opcodes, i);
 	// For 'loop' type blocks, you need to re-push the loop index
 	if(str_cstr_cmp(label_op, "loop") == 0){
-	  if(!push_u64_darray(blk_stk, i)){
-	    fprintf(stderr, "Couldnt push to block/loop stack\n");
-	    return 0;
+	  // TODO:: Figure out how the parameters work here with loops
+	  u64 pcnt = 0;
+	  u64 retcnt = 0;
+	  for(int it = 0; it < 2; it++){
+	    if((i+it)>=opcodes.count) break;
+	    const Str v = slice_inx(opcodes, i+it);
+	    if(match_str_prefix(v, "param")){
+	      pcnt = func_param_res_count(v);
+	    }else if(match_str_prefix(v, "result")){
+	      retcnt = func_param_res_count(v);
+	    }else{
+	      // TODO:: Support type indices also
+	      break;
+	    }
 	  }
+	  pushblk_stk(visit_new_blk(stk, i, pcnt, retcnt));
 	} 
       }
     } else if (str_cstr_cmp(op, "end") == 0){
       // Might need to pop from the stack
-      if(!pop_u64_darray(blk_stk, 1)){
-	fprintf(stderr, "Couldnt pop from block stack\n");
-	return 0;
-      }
+      u64 label;
+      popblk_stk(label);
+      (void)break_old_blk(stk, label);
     } else if (str_cstr_cmp(op, "call") == 0){
       // The next argument is the function index
       i++; // maybe verify that its not ended yet ??
@@ -901,21 +977,24 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
     if(trace){
       printf_stk(*stk, "After opcode %zu (%.*s) : ",
 		 i, str_print(op));
-      printf("  { ");
-      for_slice(vars, i) wasm_data_print(slice_inx(vars, i));
-      printf("}\n");
-
+      printf("\n");
+      if(trace_vars){
+	printf("  { ");
+	for_slice(vars, i) wasm_data_print(slice_inx(vars, i));
+	printf("}\n");
+	if(match_str_prefix(op, cstr_to_str("global"))){
+	  printf("    Globals: ");
+	  for_slice(cxt->globals, i) wasm_data_print(slice_inx(cxt->globals, i));
+	  printf("\n");
+	}
+      }
       if(match_str_suffix(op, cstr_to_str("load")) || 
 	 match_str_suffix(op, cstr_to_str("store"))){
 	printf("    ");
 	memory_rgn_dump(mem);
 	printf("\n");
       }
-      if(match_str_prefix(op, cstr_to_str("global"))){
-	printf("    Globals: ");
-	for_slice(cxt->globals, i) wasm_data_print(slice_inx(cxt->globals, i));
-	printf("\n");
-      }
+
     }
     
   }
@@ -936,6 +1015,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
     }
     printf("}\n");
   }
+#undef pushblk_stk
+#undef popblk_stk
 #undef pushstk
 #undef popstk
   return cycles;
@@ -1126,7 +1207,7 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   Exec_Context exec_cxt = init_exec_context(allocr, mod);
   patch_imports(&exec_cxt);
   // Find the desired exported function
-  exec_cxt.trace = true;
+  //exec_cxt.trace = true;
 
   //Cstr fxn = "abs_diff";
   //Cstr fxn = "pick_branch";

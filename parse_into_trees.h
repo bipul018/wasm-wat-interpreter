@@ -36,7 +36,7 @@ void free_parse_info(Parse_Info* parser){
 }
 Str skip_whitespace(Str input){
   size_t inx = 0;
-  for(; slice_inx(input,inx) && isspace(slice_inx(input, inx)); inx++);
+  for(; input.count && slice_inx(input,inx) && isspace(slice_inx(input, inx)); inx++);
   return str_slice(input, inx, input.count);
 }
 bool parse_identifier_or_str(Str* curr_file,Str* out_data){
