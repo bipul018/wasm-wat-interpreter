@@ -83,8 +83,8 @@ void run_raylib(int dummy_arg){
   while(window_should_close() == 0){
     begin_drawing();
     const int i = (inx / steps) % count;
-    printint(i);
-    printhex(cols[i]);
+    //printint(i);
+    //printhex(cols[i]);
     clear_background(cols[i]);
 
     draw_fps(10, 10);

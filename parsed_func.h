@@ -26,7 +26,8 @@ DEF_SLICE(Func);
 // At least the func's type will be referred to there for now
 bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
   if(!root || !func || !root->data.data) return false;
-  if(str_cstr_cmp(root->data, "func") != 0) return false;
+  //if(str_cstr_cmp(root->data, "func") != 0) return false;
+  if(str_cmp(root->data, "func") != 0) return false;
   func->identifier = root->data;
 
   Str_Darray local_vars = {.allocr=allocr};
@@ -116,18 +117,40 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
     Parse_Node* child = children.data[i];
     if(normal){
       if(child->children.count != 0){
-	normal = false;
+        // Check case for (result <> <>) and (param <> <>)
+        // In this case, somehow find the whole of the string and do
+        // (Need to be resolved someday properly)
+        if(str_cstr_cmp(child->data, "result") == 0 ||
+           str_cstr_cmp(child->data, "param") == 0){
+          Str d = child->data;
+          for_slice(child->children, i){
+            Str dc = slice_inx(child->children, i)->data;
+            if(dc.data > (d.data+d.count)){
+              d.count = (dc.data+dc.count)-d.data;
+            }
+          }
+          if(!push_Str_darray(&opcodes, d)){
+            fprintf(stderr, "Couldnt allocate memory !!!\n");
+            goto was_error;
+          }
+          //if(opcodes.count > 1){
+          //  printf(">>>> %.*s >>>>\n", str_print(slice_inx(opcodes, opcodes.count-2)));
+          //}
+          //printf("<<<< %.*s <<<<\n", str_print(d));
+        } else {
+          normal = false;
+        }
       } else {
-	if(!push_Str_darray(&opcodes, child->data)){
-	  fprintf(stderr, "Couldnt allocate memory !!!\n");
-	  goto was_error;
-	}
+        if(!push_Str_darray(&opcodes, child->data)){
+          fprintf(stderr, "Couldnt allocate memory !!!\n");
+          goto was_error;
+        }
       }
     }
     if(!normal){
       if(!push_Parse_Node_Ptr_darray(&unknowns, child)){
-	fprintf(stderr, "Couldnt allocate memory !!!\n");
-	goto was_error;
+        fprintf(stderr, "Couldnt allocate memory !!!\n");
+        goto was_error;
       }
     }
   }
@@ -178,4 +201,30 @@ void try_printing_func(const Func* func){
     printf("[%zu: %.*s] ", i, str_print(func->unknowns.data[i]->data));
   }
   printf("\n");
+}
+
+// TODO:: Someday forward, remove this hack
+// Given either <param ...> or <result ...> counts the number of items in there
+u32 func_param_res_count(Str opcode){
+
+  if(!match_str_prefix(opcode, "param") &&
+     !match_str_prefix(opcode, "result")) return 0;
+
+  // Now count how many units are there
+  u32 cnt = 0;
+  while(true){
+    // First skip the 'result'/'param' 
+    while(!isspace(slice_first(opcode)) && slice_first(opcode) != '('){
+      opcode = str_slice(opcode, 1, opcode.count-1);
+    }
+    // Then skip all whitespaces and comments
+    opcode = skip_ws_and_comment(opcode);
+    // If there are some items left, then it is counted as a unit
+    //    (I know this is not accurate, but I dont want to parse it yet)
+    if(opcode.count == 0) break;
+    cnt++;
+    // After counting this, skip that found thing just as the 'result'/'param' is skipped
+  }
+  
+  return cnt;
 }

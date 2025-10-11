@@ -10,10 +10,10 @@
   (import "env" "printstr" (func (;2;) (type 1)))
   (import "env" "window_should_close" (func (;3;) (type 5)))
   (import "env" "begin_drawing" (func (;4;) (type 3)))
-  (import "env" "printhex" (func (;5;) (type 0)))
-  (import "env" "clear_background" (func (;6;) (type 0)))
-  (import "env" "draw_fps" (func (;7;) (type 1)))
-  (import "env" "end_drawing" (func (;8;) (type 3)))
+  (import "env" "clear_background" (func (;5;) (type 0)))
+  (import "env" "draw_fps" (func (;6;) (type 1)))
+  (import "env" "end_drawing" (func (;7;) (type 3)))
+  (import "env" "printhex" (func (;8;) (type 0)))
   (import "env" "memory" (memory (;0;) 2))
   (func (;9;) (type 3))
   (func (;10;) (type 2) (param i32 i32) (result i32)
@@ -165,37 +165,31 @@
     i32.eqz
     if  ;; label = @1
       loop  ;; label = @2
-        call 4
         local.get 1
         i32.const 100
         i32.div_u
         i32.const 7
         i32.and
-        local.tee 2
-        call 0
-        local.get 2
         i32.const 2
         i32.shl
         i32.load offset=1024
-        local.tee 2
+        call 4
         call 5
-        local.get 2
+        i32.const 10
+        i32.const 10
         call 6
-        i32.const 10
-        i32.const 10
-        call 7
         local.get 1
         i32.const 1
         i32.add
         local.set 1
-        call 8
+        call 7
         call 3
         i32.eqz
         br_if 0 (;@2;)
       end
     end
     i32.const -16711936
-    call 5
+    call 8
     local.get 0
     i32.const 16
     i32.add

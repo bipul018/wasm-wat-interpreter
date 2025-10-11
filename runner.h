@@ -118,6 +118,10 @@ struct Exec_Context {
   Wasm_Fxn_Slice fxns;
   // TODO:: Implement immutability
   Wasm_Data_Slice globals;
+
+  // Runtime metadata
+  bool trace;
+  u64 cycle_limit;
 };
 
 Wasm_Fxn_Ptr wasm_fxn_executor; // Used to make calls to a wasm fxn, expects param in stk
@@ -134,6 +138,8 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
     .mod=mod,
     .stk={.allocr=allocr},
     .blk_stk={.allocr=allocr},
+    .trace = false,
+    .cycle_limit = 0,
   };
   cxt.mem = memory_rgn_init(allocr);
 
@@ -216,8 +222,6 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
   }
   for_slice(mod->funcs, i){
     slice_inx(cxt.fxns, fxn_cnt).fptr = wasm_fxn_executor;
-    // TODO:: Make this feed into another fxn that takes not just Func*
-    //        but also other metadata like 'trace/step' 
     slice_inx(cxt.fxns, fxn_cnt).data = mod->funcs.data + i;
     fxn_cnt++;    
   }
@@ -311,6 +315,7 @@ u64 exec_wasm_fxn(Alloc_Interface allocr, Exec_Context* cxt, size_t finx){
   return cycles;
 }
 
+
 u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice opcodes, Wasm_Data_Slice vars);
 // Expect that at call, Func* is resolved into from the index
 // Also expect that the stack violation checking is done at the call site directly
@@ -384,8 +389,59 @@ static s64 find_end_block(Str_Slice opcodes, size_t inx){
     if(str_cstr_cmp(op, "else") == 0 && cnt == 1) cnt--;
     if(cnt == 0) break;
   }
-  if(cnt != 0) return -1;
+  if(cnt != 0) {
+    return -1;
+  }
   return inx; // Returns the index of the end block, need to do +1 for continuation
+}
+// A function to help handle block stack and its items
+u64 visit_new_blk(u64_Darray* stk, size_t opn, size_t blk_argn){
+  // Combines the stk location (if enough) and opcode number and returns
+  //  the thing needed to push onto the block stack
+
+  // Returns (u64)-1 if some error happens (will also print to stderr)
+
+  assert(stk);
+  if(stk->count < blk_argn){
+    fprintf(stderr, "Expected %zu arguments but found only %zu items on stack\n",
+	    blk_argn, stk->count);
+    return (u64)-1;
+  }
+
+  u64 distval = 0;
+  u32* ptr = (u32*)&distval; // TODO:: Use a union or something someday
+  ptr[0] = stk->count - blk_argn; // The supposed count of stack without return values
+  ptr[1]= opn;
+
+  return distval;
+}
+size_t break_old_blk(u64_Darray* stk, u64 label, size_t blk_retn){
+  // Given the 'label', it decomposes that into the two values, stk pos and opcode number
+  // For the stk pos, it then adjusts the stk value (if possible) and saves just the
+  // return value amount
+  // Returns the index of the opcode to jump to
+
+  // On error (stack problem), it prints error and returns (size_t)-1
+  assert(stk);
+  const u32* ptr = (u32*)&label;
+  u32 stkcnt = ptr[0];
+  u32 opn = ptr[1];
+
+  if(stk->count < (stkcnt+blk_retn)){
+    fprintf(stderr, "Stack violation, expected at least %zu items, found %zu on stack\n",
+	    (stkcnt+blk_retn), stk->count);
+    return (size_t)(-1);
+  }
+  // Now move and pop stack
+  size_t to_remove = stk->count - stkcnt - blk_retn;
+  if(to_remove > 0){
+    if(!downsize_u64_darray(stk, stkcnt+blk_retn, to_remove)){
+      fprintf(stderr, "Failed doing memory operation\n");
+      return (size_t)(-1);
+    }
+  }
+  
+  return opn;
 }
 u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice opcodes, Wasm_Data_Slice vars){
   u64_Darray* stk = &cxt->stk;
@@ -413,17 +469,21 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
   
   u64 cycles = 0;
 
-  printf_stk(*stk, "Running function, the current stack is : ");
-  printf("\nThe initial memory is : \n    ");
-  memory_rgn_dump(mem);
-  printf("\n");
+  const bool trace = cxt->trace;
+  const u64 cycle_limit = cxt->cycle_limit;
+  if(trace){
+    printf_stk(*stk, "Running function, the current stack is : ");
+    printf("\nThe initial memory is : \n    ");
+    memory_rgn_dump(mem);
+    printf("\n");
+  }
 
   // TODO:: Care about the result ?
   // Go through the opcodes?
   for_slice(opcodes, i){
 
-    if(cycles > 45){
-      printf("reached > 45 cycles, quitting for now\n");
+    if(cycle_limit && cycles > cycle_limit){
+      printf("reached > %zu cycles, quitting for now\n", (size_t)cycle_limit);
       return 0;
     }
 
@@ -715,7 +775,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       // Find the end of the block first
       const s64 end1 = find_end_block(opcodes, i);
       if(end1 < 0){
-	fprintf(stderr, "Unmatched block found for opcode %zu(%.*s)\n",
+	fprintf(stderr, "Unmatched block found for opcode(1) %zu(%.*s)\n",
 		i, str_print(slice_inx(opcodes, i)));
 	return 0;
       }
@@ -727,7 +787,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       if(str_cstr_cmp(slice_inx(opcodes, end1), "else") == 0){
 	end2 = find_end_block(opcodes, end1);
 	if(end2 < 0){
-	  fprintf(stderr, "Unmatched block found for opcode %zu(%.*s)\n",
+	  fprintf(stderr, "Unmatched block found for opcode(2) %zu(%.*s)\n",
 		  end1, str_print(slice_inx(opcodes, i)));
 	  return 0;
 	}
@@ -837,40 +897,45 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       return 0;
     }
     cycles++;
-    printf_stk(*stk, "After opcode %zu (%.*s) : ",
-	       i, str_print(op));
-    printf("  { ");
-    for_slice(vars, i) wasm_data_print(slice_inx(vars, i));
-    printf("}\n");
 
-    if(match_str_suffix(op, cstr_to_str("load")) || 
-       match_str_suffix(op, cstr_to_str("store"))){
-      printf("    ");
-      memory_rgn_dump(mem);
-      printf("\n");
-    }
-    if(match_str_prefix(op, cstr_to_str("global"))){
-      printf("    Globals: ");
-      for_slice(cxt->globals, i) wasm_data_print(slice_inx(cxt->globals, i));
-      printf("\n");
+    if(trace){
+      printf_stk(*stk, "After opcode %zu (%.*s) : ",
+		 i, str_print(op));
+      printf("  { ");
+      for_slice(vars, i) wasm_data_print(slice_inx(vars, i));
+      printf("}\n");
+
+      if(match_str_suffix(op, cstr_to_str("load")) || 
+	 match_str_suffix(op, cstr_to_str("store"))){
+	printf("    ");
+	memory_rgn_dump(mem);
+	printf("\n");
+      }
+      if(match_str_prefix(op, cstr_to_str("global"))){
+	printf("    Globals: ");
+	for_slice(cxt->globals, i) wasm_data_print(slice_inx(cxt->globals, i));
+	printf("\n");
+      }
     }
     
   }
-  printf("Processed %zu instructions \n", cycles);
-  printf_stk(*stk, "After function execution : ");
-  printf("  { ");
-  for_slice(vars, i){
-    const Wasm_Data d = slice_inx(vars,i);
-    printf("%s(", wasm_names[d.tag]);
-    switch(d.tag){
-    case WASM_DATA_I32: {printf("%ld", (long)d.di32); break;}
-    case WASM_DATA_U32: {printf("%lu", (unsigned long)d.du32); break;}
-    case WASM_DATA_F32: {printf("%f", (float)d.df32); break;}
-    case WASM_DATA_U64: {printf("%llu", (long long unsigned)d.du64); break;}
+  if(trace){
+    printf("Processed %zu instructions \n", cycles);
+    printf_stk(*stk, "After function execution : ");
+    printf("  { ");
+    for_slice(vars, i){
+      const Wasm_Data d = slice_inx(vars,i);
+      printf("%s(", wasm_names[d.tag]);
+      switch(d.tag){
+      case WASM_DATA_I32: {printf("%ld", (long)d.di32); break;}
+      case WASM_DATA_U32: {printf("%lu", (unsigned long)d.du32); break;}
+      case WASM_DATA_F32: {printf("%f", (float)d.df32); break;}
+      case WASM_DATA_U64: {printf("%llu", (long long unsigned)d.du64); break;}
+      }
+      printf(") ");
     }
-    printf(") ");
+    printf("}\n");
   }
-  printf("}\n");
 #undef pushstk
 #undef popstk
   return cycles;
@@ -898,7 +963,7 @@ u64 init_window(Alloc_Interface, Exec_Context* cxt, void* data){
   
   printf("--------------- window sizes: %dx%d  ----------\n", dw.di32, dh.di32);
   InitWindow(dw.di32, dh.di32, window_name);
-  SetTargetFPS(120);
+  SetTargetFPS(240);
   printf("-------------------------- called the window creation fxn ----------\n");
   return 1;
 }
@@ -1061,6 +1126,7 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   Exec_Context exec_cxt = init_exec_context(allocr, mod);
   patch_imports(&exec_cxt);
   // Find the desired exported function
+  exec_cxt.trace = true;
 
   //Cstr fxn = "abs_diff";
   //Cstr fxn = "pick_branch";
@@ -1068,8 +1134,8 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   //Cstr fxn = "fibo_rec";
   //Cstr fxn = "sub";
   //Cstr fxn = "print_sum";
-  Cstr fxn = "run_raylib";
-  //Cstr fxn = "main_";
+  //Cstr fxn = "run_raylib";
+  Cstr fxn = "main_";
 
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;
@@ -1087,9 +1153,9 @@ void run_sample(Alloc_Interface allocr, Module* mod){
   Wasm_Data args[] = {
     //{.tag = WASM_DATA_I32, .di32 = 420},
     //{.tag = WASM_DATA_I32, .di32 = 351},
-    {.tag = WASM_DATA_I32, .di32 = 12},
-    //{.tag = WASM_DATA_I32, .di32 = 0},
-    //{.tag = WASM_DATA_I32, .di32 = 0},
+    //{.tag = WASM_DATA_I32, .di32 = 12},
+    {.tag = WASM_DATA_I32, .di32 = 0},
+    {.tag = WASM_DATA_I32, .di32 = 0},
   };
   for_range(size_t, i, 0, _countof(args)){
     if(!push_u64_darray(&exec_cxt.stk, args[i].du64)){
@@ -1106,6 +1172,5 @@ void run_sample(Alloc_Interface allocr, Module* mod){
 
   printf("It took %zu cycles to complete execution of function %s\n", (size_t)cycles, fxn);
   // TODO:: Also print the initial arguments and the final state
-
   deinit_exec_context(allocr, &exec_cxt);
 }

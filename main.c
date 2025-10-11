@@ -20,28 +20,48 @@ Str str_slice(Str str, size_t begin, size_t end){
   if(nullptr == str.data || begin >= end || end > str.count) return (Str){ 0 };
   return (Str){ .data = str.data + begin, .count = end - begin };
 }
+Str cstr_to_str(Cstr str){
+  return (Str){.data = (void*)str, .count = strlen(str)};
+}
 int str_str_cmp(Str str1, Str str2){
   const size_t l = _min(str1.count, str2.count);
   int v = strncmp(str1.data, str2.data, l);
   if(v != 0) return v;
   return (int)(str1.count - l) - (int)(str2.count - l);
 }
-int str_cstr_cmp(Str str1, Cstr str2){
-  return str_str_cmp(str1, (Str){.data=(void*)str2,.count=strlen(str2)});
-}
-int cstr_str_cmp(Cstr str1, Str str2){
-  return str_str_cmp((Str){.data=(void*)str1,.count=strlen(str1)},str2);
-}
-Str cstr_to_str(Cstr str){
-  return (Str){.data = (void*)str, .count = strlen(str)};
-}
-bool match_str_prefix(Str haystack, Str needle){
+#define DEF_STR_CSTR_FXN(base_fxn, ret_type)		\
+  ret_type base_fxn##_c_c(Cstr a, Cstr b){return base_fxn(cstr_to_str(a), cstr_to_str(b));}\
+  ret_type base_fxn##_s_c(Str a, Cstr b){return base_fxn(a, cstr_to_str(b));}	\
+  ret_type base_fxn##_c_s(Cstr a, Str b){return base_fxn(cstr_to_str(a), b);} 
+
+#define DEF_STR_CSTR_GEN(base_fxn, arg1, arg2)	\
+  (_Generic((arg1),							\
+	    Str: _Generic((arg2), Str: base_fxn, default:base_fxn##_s_c),	\
+	    default: _Generic((arg2), Str: base_fxn##_c_s, default: base_fxn##_c_c))	\
+   ((arg1),(arg2)))
+
+int str_cstr_cmp(Str str1, Cstr str2){ return str_str_cmp(str1,cstr_to_str(str2)); }
+int cstr_str_cmp(Cstr str1, Str str2){ return str_str_cmp(cstr_to_str(str1),str2); }
+DEF_STR_CSTR_FXN(str_str_cmp, int);
+#define str_cmp(a, b) DEF_STR_CSTR_GEN(str_str_cmp, a, b)
+
+
+bool match_str_prefix_(Str haystack, Str needle){
   return str_str_cmp(needle, str_slice(haystack, 0, needle.count)) == 0;
 }
-bool match_str_suffix(Str haystack, Str needle){
+DEF_STR_CSTR_FXN(match_str_prefix_, bool);
+#define match_str_prefix(haystack, needle)		\
+  DEF_STR_CSTR_GEN(match_str_prefix_, haystack, needle)
+
+
+bool match_str_suffix_(Str haystack, Str needle){
   if(haystack.count<needle.count) return false;
   return str_str_cmp(needle, str_slice(haystack, haystack.count-needle.count, haystack.count)) == 0;
 }
+DEF_STR_CSTR_FXN(match_str_suffix_, bool);
+#define match_str_suffix(haystack, needle)		\
+  DEF_STR_CSTR_GEN(match_str_suffix_, haystack, needle)
+
 
 #define slice_shrink_front(slice_iden, amt)	\
   do{						\
@@ -79,8 +99,8 @@ int main(void){
   Alloc_Interface allocr = gen_std_allocator();
   //parse_node_iter_run_demo(allocr);
 
-  Parse_Info parser = init_parse_info(allocr, "hello.wat");
-  //Parse_Info parser = init_parse_info(allocr, "1brc/1brc.wat");
+  //Parse_Info parser = init_parse_info(allocr, "hello.wat");
+  Parse_Info parser = init_parse_info(allocr, "1brc/1brc.wat");
 
   // printf("Printing the file by lines: \n");
   // for_slice(parser.line_nums, ln){
@@ -111,7 +131,7 @@ int main(void){
     printf("Couldnt parse the main module!!!\n");
     return 1;
   }
-  //try_printing_module(&main_module);
+  try_printing_module(&main_module);
 
   //run_memory_page_sample(allocr);
 
