@@ -99,8 +99,9 @@ int main(void){
   Alloc_Interface allocr = gen_std_allocator();
   //parse_node_iter_run_demo(allocr);
 
-  //Parse_Info parser = init_parse_info(allocr, "hello.wat");
-  Parse_Info parser = init_parse_info(allocr, "1brc/1brc.wat");
+  //Cstr watfname = "hello.wat";
+  Cstr watfname = "1brc/1brc.wat";
+  Parse_Info parser = init_parse_info(allocr, watfname);
 
   // printf("Printing the file by lines: \n");
   // for_slice(parser.line_nums, ln){
@@ -135,7 +136,7 @@ int main(void){
 
   //run_memory_page_sample(allocr);
 
-  run_sample(allocr, &main_module);
+  run_sample(allocr, &main_module, cstr_to_str(watfname));
 
   
 

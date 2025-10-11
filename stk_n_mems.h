@@ -178,6 +178,38 @@ bool memory_rgn_write(Memory_Region* mem, size_t off, size_t size, const void* i
   return true;
 }
 
+// strlen but for the memory pages
+size_t memory_rgn_strlen(Memory_Region* mem, const size_t off){
+  size_t len = 0;
+  u8 ch;
+  size_t pinx = _align_down(off, MEMORY_PAGE_SIZE)/MEMORY_PAGE_SIZE;
+  size_t poff = off - pinx * MEMORY_PAGE_SIZE;
+  while(true){
+    Memory_Page* page = memory_rgn_get_page(mem, pinx);
+    if(!page) break; // maybe error?
+    size_t page_slen = strnlen(page->data+poff, MEMORY_PAGE_SIZE-poff);
+    len += page_slen;
+    if(page_slen < MEMORY_PAGE_SIZE-poff) break;
+
+    pinx++;
+    poff=pinx*MEMORY_PAGE_SIZE;
+  }
+  return len;
+}
+
+Str memory_rgn_cstrdup(Alloc_Interface allocr, Memory_Region* mem, const size_t off){
+  u8_Slice str = SLICE_ALLOC(allocr, u8, memory_rgn_strlen(mem, off));
+  if(!str.data){
+    return (u8_Slice){0};
+  }
+  if(!memory_rgn_read(mem, off, str.count, str.data)){
+    SLICE_FREE(allocr, str);
+    return (u8_Slice){0};
+  }
+  return str;
+}
+
+
 int compare_memory_pages(const void* a, const void* b){
   const Memory_Page** pa = (void*)a;
   const Memory_Page** pb = (void*)b;

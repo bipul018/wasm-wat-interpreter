@@ -1094,7 +1094,7 @@ u64 draw_fps(Alloc_Interface, Exec_Context* cxt, void* data){
   DrawFPS(px.di32, py.di32);
   return 1;
 }
-u64 printstr(Alloc_Interface, Exec_Context* cxt, void* data){
+u64 printstr(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   // Two int32 args: first pointer to cstr, second pointer to varargs
   if(cxt->stk.count < 2) errnret(0, "printstr needs 2 args, (cstr,varargs)\n");
   Wasm_Data cstr={0},varargs={0};
@@ -1110,30 +1110,22 @@ u64 printstr(Alloc_Interface, Exec_Context* cxt, void* data){
   // TODO:: Also for the vararg
   size_t argoff = varargs.di32;
 
-  while(1){
-    if((off - cstr.di32) > 4096){
-      fprintf(stderr, "Likely a lack of end null byte!\n");
-      return 0;
-    }
-    u8 ch;
-
-#define read_one_char()					\
-    do{							\
-      if(!memory_rgn_read(&cxt->mem, off, 1, &ch)){		\
-	fprintf(stderr, "Couldnt read at %zu\n", off);	\
-	return 0;					\
-      }							\
-      off++;\
-    }while(0)
-
-    read_one_char();
+  //  Copy the string first
+  Str fmtstr = memory_rgn_cstrdup(allocr, &cxt->mem, off);
+  if(!fmtstr.data){
+    fprintf(stderr, "allocation/memory region read failure\n");
+    return 0;
+  }
+  for_slice(fmtstr, fmtinx){
+    char ch = slice_inx(fmtstr, fmtinx);
     if(ch == 0) break;
-
     if(ch == '%'){
-      read_one_char();
+      fmtinx++;
+      ch = slice_inx(fmtstr, fmtinx);
       if(ch == 'd'){
 	s32 v;
 	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
+	  // TODO:: memory leak
 	  fprintf(stderr, "Couldnt read at %zu\n", argoff);
 	  return 0;
 	}
@@ -1142,35 +1134,32 @@ u64 printstr(Alloc_Interface, Exec_Context* cxt, void* data){
       } else if(ch == 's') {
 	s32 v;
 	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
+	  // TODO:: memory leak
 	  fprintf(stderr, "Couldnt read at %zu\n", argoff);
 	  return 0;
 	}
 	argoff+=sizeof(s32);
 
-	const size_t bkp_off = off;
-	const size_t str_off = v;
-	off=v;
-	while(1){
-	  if((off - str_off) > 4096){
-	    fprintf(stderr, "Likely a lack of end null byte!\n");
-	    return 0;
-	  }
-	  read_one_char();
-	  if(ch == 0) break;
-	  printf("%c", ch);
+	// Read another string
+	Str argstr = memory_rgn_cstrdup(allocr, &cxt->mem, v);
+	if(!argstr.data){
+	  // TODO:: memory leak
+	  fprintf(stderr, "allocation or memory read failure\n");
+	  return 0;
 	}
-	off = bkp_off;
+	printf("%.*s", str_print(argstr));
+	SLICE_FREE(allocr, argstr);
       } else {
 	printf("%%%c", ch);
       }
     } else {
       printf("%c", ch);
     }
-
-#undef read_one_char
   }
+  SLICE_FREE(allocr, fmtstr);
   return 1;
 }
+
 
 void patch_imports(Exec_Context* cxt){
   for_slice(cxt->fxns, i){
@@ -1203,7 +1192,7 @@ void patch_imports(Exec_Context* cxt){
 
 
 // TODO:: Fix the __stack_pointer also if it exists (or force it to exist)
-void run_sample(Alloc_Interface allocr, Module* mod){
+void run_sample(Alloc_Interface allocr, Module* mod, Str entrypath){
   Exec_Context exec_cxt = init_exec_context(allocr, mod);
   patch_imports(&exec_cxt);
   // Find the desired exported function
