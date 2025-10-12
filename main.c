@@ -132,7 +132,7 @@ int main(void){
     printf("Couldnt parse the main module!!!\n");
     return 1;
   }
-  try_printing_module(&main_module);
+  //try_printing_module(&main_module);
 
   //run_memory_page_sample(allocr);
 

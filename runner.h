@@ -120,6 +120,7 @@ struct Exec_Context {
   u64_Darray blk_stk;
 
   // TODO:: When doing multithreading, linear memory might need to be made a pointer
+ // TODO:: Somehow detect stack overflow or change the position of stack
   Memory_Region mem;
   Wasm_Fxn_Slice fxns;
   // TODO:: Implement immutability
@@ -138,6 +139,7 @@ Wasm_Fxn_Ptr dummy_import_fxn; // To be used everywhere if import not fo
 Wasm_Fxn_Ptr wasm_extern_printint;
 Wasm_Fxn_Ptr wasm_extern_printhex;
 
+u64 exec_wasm_fxn(Alloc_Interface allocr, Exec_Context* cxt, size_t finx);
 // TODO:: figure out some other way of resolving the imports maybe
 Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
   // Allocate the memory region, stk, blk_stk
@@ -232,6 +234,36 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
     slice_inx(cxt.fxns, fxn_cnt).fptr = wasm_fxn_executor;
     slice_inx(cxt.fxns, fxn_cnt).data = mod->funcs.data + i;
     fxn_cnt++;    
+  }
+
+  // TODO:: Run the start function here
+  //        wasm std says that no extern things are accessible in the start fxn
+  //        but for now the print fxns are made accessible since hardcoded
+  for_slice(mod->unknowns, i){
+    Parse_Node* nod = slice_inx(mod->unknowns, i);
+    if(str_cmp(nod->data, "start") == 0){
+      // TODO:: Assert the type to have no args and no ret vals maybe
+      if(nod->children.count != 1){
+	fprintf(stderr, "Invalid start declaration\n");
+      } else {
+	u64 finx = 0;
+	if(!parse_as_u64(slice_first(nod->children)->data, &finx)){
+	  fprintf(stderr, "Failed to get fxn %zu for `start`\n", (size_t)finx);
+	  continue;
+	}
+	printf("Running start function at %zu....\n", finx);
+	//const bool prev_trace = cxt.trace;
+	//const bool prev_trace_vars = cxt.trace_vars;
+	//cxt.trace = cxt.trace_vars = true;
+	u64 cycles = exec_wasm_fxn(allocr, &cxt, finx);
+	//cxt.trace = prev_trace;
+	//cxt.trace_vars = prev_trace_vars;
+	if(cycles == 0){
+	  printf("Sus..., cycles = 0 found when running start function\n");
+	}
+	printf(".... Finished function at %zu\n", finx);
+      }
+    }
   }
 
   return cxt;
@@ -648,10 +680,12 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       p.di64 = v;
       pushstk(p.du64);
     } else if (match_str_suffix(op, cstr_to_str("load")) ||
-	       match_str_suffix(op, cstr_to_str("store"))){
+	       match_str_suffix(op, cstr_to_str("store"))||
+	       match_str_suffix(op, cstr_to_str("load8_u"))){
       Wasm_Data val; // For store, these are first popped from stack
 
-      const bool to_load = match_str_suffix(op, cstr_to_str("load"));
+      const bool to_load = match_str_suffix(op, cstr_to_str("load")) ||
+	match_str_suffix(op, cstr_to_str("load8_u"));
       if(!to_load) popstk(val.du64);
 
       // Common part of store and load
@@ -685,7 +719,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       size_t sz_dt=0;
 #define fill_ptr_n_size(prefix, item)			\
       do{						\
-	if(match_str_prefix(op, cstr_to_str(prefix))){	\
+	if(match_str_prefix(op, prefix)){		\
 	  pdata = &val.item;				\
 	  sz_dt = sizeof(val.item);			\
 	}						\
@@ -696,14 +730,28 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       fill_ptr_n_size("u64", du64);
       fill_ptr_n_size("f32", df32);
       // TODO:: Handle when none of the values match
+      if(match_str_suffix(op, "8_u")){
+	sz_dt = 1;
+      }
 #undef fill_ptr_n_size
 
       if(to_load) {
 	(void)memory_rgn_read(mem, offset, sz_dt, pdata);
+	if(match_str_suffix(op, "8_u")){
+	  val.du64 = val.du64 & 0xff;
+	}
 	pushstk(val.du64);
       } else {
 	(void)memory_rgn_write(mem, offset, sz_dt, pdata);
       }
+    } else if (str_cstr_cmp(op, "memory.fill") == 0){
+      Wasm_Data ptr = {0}, ch = {0}, len = {0};
+      popstk(len.du64);
+      popstk(ch.du64);
+      popstk(ptr.du64);
+
+      memory_rgn_memset(mem, ptr.di32, len.di32, ch.di32);
+
     } else if (str_cstr_cmp(op, "i32.sub") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -766,6 +814,12 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = (s32)(p1.di32 >= p0.di32);
       pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.ge_u") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      // TODO:: Need to ensure that this is alright
+      r.di32 = (s32)((u32)p1.di32 >= (u32)p0.di32);
+      pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.lt_s") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -775,6 +829,12 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = (s32)(p1.di32 <= p0.di32);
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.le_u") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      // TODO:: Need to ensure that this is alright
+      r.di32 = (s32)((u32)p1.di32 <= (u32)p0.di32);
       pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.eqz") == 0){
       Wasm_Data p = {0},  r = {0};
@@ -989,7 +1049,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	}
       }
       if(match_str_suffix(op, cstr_to_str("load")) || 
-	 match_str_suffix(op, cstr_to_str("store"))){
+	 match_str_suffix(op, cstr_to_str("store")) ||
+	 match_str_suffix(op, cstr_to_str("load8_u")) ||
+	 match_str_prefix(op, cstr_to_str("memory"))){
 	printf("    ");
 	memory_rgn_dump(mem);
 	printf("\n");
@@ -1086,9 +1148,9 @@ u64 draw_fps(Alloc_Interface, Exec_Context* cxt, void* data){
   if(cxt->stk.count < 2) errnret(0, "Drawing fps needs 2 args, (posx,posy)\n");
   // THIS ORDER IS PROB WRONG
   Wasm_Data px={0},py={0},fsz={0};
-  px.du64 = slice_last(cxt->stk);
-  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
   py.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  px.du64 = slice_last(cxt->stk);
   if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
 
   DrawFPS(px.di32, py.di32);
@@ -1131,6 +1193,17 @@ u64 printstr(Alloc_Interface allocr, Exec_Context* cxt, void* data){
 	}
 	argoff+=sizeof(s32);
 	printf("%ld", (long)v);
+      } else if(ch == 'l' && ((fmtinx+1)<fmtstr.count) &&
+		slice_inx(fmtstr, fmtinx+1) == 'x'){
+	fmtinx++;
+	s32 v;
+	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
+	  // TODO:: memory leak
+	  fprintf(stderr, "Couldnt read at %zu\n", argoff);
+	  return 0;
+	}
+	argoff+=sizeof(s32);
+	printf("%lx", (long)v);
       } else if(ch == 's') {
 	s32 v;
 	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
@@ -1160,8 +1233,126 @@ u64 printstr(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   return 1;
 }
 
+typedef FILE* File_Ptr;
+DEF_DARRAY(File_Ptr, 1);
 
-void patch_imports(Exec_Context* cxt){
+u64 wasm_fopen(Alloc_Interface allocr, Exec_Context* cxt, void* data){
+  // Two int32 args: first pointer to filename, second to mode
+  if(cxt->stk.count < 2) errnret(0, "fopen needs 2 args, (name,mode)\n");
+  Wasm_Data fname_off={0},fmode_off={0};
+  fmode_off.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  fname_off.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  Str fname = memory_rgn_cstrdup(allocr, &cxt->mem, fname_off.di32);
+  if(!fname.data){
+    fprintf(stderr, "allocation/memory region read failure\n");
+    return 0;
+  }
+  Str fmode = memory_rgn_cstrdup(allocr, &cxt->mem, fmode_off.di32);
+  if(!fmode.data){
+    SLICE_FREE(allocr, fname);
+    fprintf(stderr, "allocation/memory region read failure\n");
+    return 0;
+  }
+
+  File_Ptr_Darray* fptrs = data;
+  FILE* fptr = fopen(fname.data, fmode.data);
+  if(fptr == nullptr){
+    const Wasm_Data res = {.di32 = 0};
+    if(!push_u64_darray(&cxt->stk, res.du64)){
+      SLICE_FREE(allocr, fmode);
+      SLICE_FREE(allocr, fname);
+      fprintf(stderr, "allocation failure\n");
+      return 0;
+    }
+  } else {
+    if(!push_File_Ptr_darray(fptrs, fptr)){
+      fclose(fptr);
+      SLICE_FREE(allocr, fmode);
+      SLICE_FREE(allocr, fname);
+      fprintf(stderr, "allocation failure\n");
+      return 0;
+    }
+    const Wasm_Data res = {.di32 = fptrs->count};
+    if(!push_u64_darray(&cxt->stk, res.du64)){
+      fclose(fptr);
+      SLICE_FREE(allocr, fmode);
+      SLICE_FREE(allocr, fname);
+      fprintf(stderr, "allocation failure\n");
+      return 0;
+    }
+  }
+
+  // count is returned, so the supplied index is actual index + 1
+  return 1;
+}
+u64 wasm_fread(Alloc_Interface allocr, Exec_Context* cxt, void* data){
+  // Four int32 args: <buffer ptr> <member size> <num mem> <file ptr>
+  if(cxt->stk.count < 2) errnret(0, "fread needs 4 args, (ptr,size,nmemb,stream)\n");
+  Wasm_Data ptr_off={0}, item_sz={0}, item_cnt={0}, fptr_inx={0};
+
+  fptr_inx.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  item_cnt.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  item_sz.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  ptr_off.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  
+  const File_Ptr_Darray* fptrs = data;
+  if(fptr_inx.di32 > fptrs->count){
+    fprintf(stderr, "fread trying to read file not yet opened\n");
+    return 0;
+  }
+  FILE* fstrm = slice_inx(*fptrs, fptr_inx.di32-1);
+  // Allocate a temporary buffer, read into it and write it to the
+  // actual buffer
+  const size_t buflen = (size_t)item_sz.di32 * item_cnt.di32;
+  u8_Slice buff = SLICE_ALLOC(allocr, u8, buflen);
+  if(!buff.data){
+    fprintf(stderr, "allocation failure\n");
+    return 0;
+  }
+
+  size_t res = fread(buff.data, item_sz.di32, item_cnt.di32, fstrm);
+  if(!memory_rgn_write(&cxt->mem, ptr_off.di32, buff.count, buff.data)){
+    SLICE_FREE(allocr, buff);
+    fprintf(stderr, "memory region allocation failure\n");
+    return 0;
+  }
+  SLICE_FREE(allocr, buff);
+
+  Wasm_Data retv = {0};
+  retv.di32 = res;
+  if(!push_u64_darray(&cxt->stk, retv.du64)){
+    fprintf(stderr, "allocation failure\n");
+    return 0;
+  }
+  return 1;
+}
+u64 wasm_perror(Alloc_Interface allocr, Exec_Context* cxt, void* data){
+  // One int32 args: first pointer to filename, second to mode
+  if(cxt->stk.count < 1) errnret(0, "popen needs 1 arg, (errstring)\n");
+  Wasm_Data errstr_inx={0};
+  errstr_inx.du64=slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+
+  Str errstr = memory_rgn_cstrdup(allocr, &cxt->mem, errstr_inx.di32);
+  if(!errstr.data){
+    fprintf(stderr, "allocation/memory region read failure\n");
+    return 0;
+  }
+  perror(errstr.data);
+  SLICE_FREE(allocr, errstr);
+  return 1;
+}
+
+// TODO:: Store this somewhere else
+File_Ptr_Darray fptrs;
+void patch_imports(Alloc_Interface allocr, Exec_Context* cxt){
+  fptrs = init_File_Ptr_darray(allocr);
   for_slice(cxt->fxns, i){
     if(slice_inx(cxt->fxns, i).fptr == dummy_import_fxn){
       if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "init_window") == 0){
@@ -1186,6 +1377,17 @@ void patch_imports(Exec_Context* cxt){
       else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "printstr") == 0){
 	slice_inx(cxt->fxns, i).fptr = printstr;
       }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "fopen") == 0){
+	slice_inx(cxt->fxns, i).fptr = wasm_fopen;
+	slice_inx(cxt->fxns, i).data = &fptrs;
+      }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "fread") == 0){
+	slice_inx(cxt->fxns, i).fptr = wasm_fread;
+	slice_inx(cxt->fxns, i).data = &fptrs;
+      }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "perror") == 0){
+	slice_inx(cxt->fxns, i).fptr = wasm_perror;
+      }
     }
   }
 }
@@ -1194,9 +1396,11 @@ void patch_imports(Exec_Context* cxt){
 // TODO:: Fix the __stack_pointer also if it exists (or force it to exist)
 void run_sample(Alloc_Interface allocr, Module* mod, Str entrypath){
   Exec_Context exec_cxt = init_exec_context(allocr, mod);
-  patch_imports(&exec_cxt);
+  patch_imports(allocr, &exec_cxt);
   // Find the desired exported function
-  //exec_cxt.trace = true;
+  exec_cxt.trace = true;
+  // Dangerous to enable when large storage is used
+  //exec_cxt.trace_vars = true;
 
   //Cstr fxn = "abs_diff";
   //Cstr fxn = "pick_branch";

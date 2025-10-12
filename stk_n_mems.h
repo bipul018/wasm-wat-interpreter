@@ -28,6 +28,7 @@ void print_stack(u64_Slice stk){
 // A lazily built memory for wasm ?
 // Idea: Each memory index will be mapped to pages that can be lazily
 //   allocated and realized on read or write operation?
+// Turns out this is the page size of wasm , 64KB
 #define MEMORY_PAGE_SIZE_POWER 16
 #define MEMORY_PAGE_SIZE (1 << MEMORY_PAGE_SIZE_POWER) // Ensure that its always power of two
 // Ensure that you never ever not access this without reference
@@ -198,7 +199,7 @@ size_t memory_rgn_strlen(Memory_Region* mem, const size_t off){
 }
 
 Str memory_rgn_cstrdup(Alloc_Interface allocr, Memory_Region* mem, const size_t off){
-  u8_Slice str = SLICE_ALLOC(allocr, u8, memory_rgn_strlen(mem, off));
+  u8_Slice str = SLICE_ALLOC(allocr, u8, memory_rgn_strlen(mem, off)+1);
   if(!str.data){
     return (u8_Slice){0};
   }
@@ -206,7 +207,23 @@ Str memory_rgn_cstrdup(Alloc_Interface allocr, Memory_Region* mem, const size_t 
     SLICE_FREE(allocr, str);
     return (u8_Slice){0};
   }
+  slice_inx(str, str.count-1) = 0;
+  //str.count--;
   return str;
+}
+
+// TODO:: Test this
+void memory_rgn_memset(Memory_Region* mem, const u32 off, const u32 len, u8 v){
+  // TODO:: Implement traps and trap when memory fault
+  Memory_Page_Iter iter = memory_rgn_iter_init(off, len);
+  while(memory_rgn_iter(&iter)){
+    Memory_Page* page = memory_rgn_get_page(mem, iter.page_inx);
+    if(!page) {
+      // TODO:: Memory fault later, for now skip
+    } else {
+      memset(page->data+iter.page_off, v, iter.page_size);
+    }
+  }
 }
 
 
@@ -328,4 +345,4 @@ void run_memory_page_sample(Alloc_Interface allocr){
   memory_rgn_deinit(&mem);
   printf("------------------------------------------------------\n");
 }
-
+// TODO:: Test across pages str reading, str len, memset, memcpy
