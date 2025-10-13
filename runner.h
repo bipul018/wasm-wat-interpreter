@@ -129,6 +129,7 @@ struct Exec_Context {
   // Runtime metadata
   bool trace;
   bool trace_vars;
+  bool trace_mem;
   u64 cycle_limit;
 };
 
@@ -149,6 +150,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
     .blk_stk={.allocr=allocr},
     .trace = false,
     .trace_vars = false,
+    .trace_mem = false,
     .cycle_limit = 0,
   };
   cxt.mem = memory_rgn_init(allocr);
@@ -254,10 +256,12 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
 	printf("Running start function at %zu....\n", finx);
 	//const bool prev_trace = cxt.trace;
 	//const bool prev_trace_vars = cxt.trace_vars;
-	//cxt.trace = cxt.trace_vars = true;
+	//const bool prev_trace_mem = cxt.trace_mem;
+	//cxt.trace = cxt.trace_vars = cxt.trace_mem = true;
 	u64 cycles = exec_wasm_fxn(allocr, &cxt, finx);
 	//cxt.trace = prev_trace;
 	//cxt.trace_vars = prev_trace_vars;
+	//cxt.trace_mem = prev_trace_mem;
 	if(cycles == 0){
 	  printf("Sus..., cycles = 0 found when running start function\n");
 	}
@@ -537,12 +541,15 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 
   const bool trace = cxt->trace;
   const bool trace_vars = cxt->trace_vars;
+  const bool trace_mem = cxt->trace_mem;
   const u64 cycle_limit = cxt->cycle_limit;
   if(trace){
     printf_stk(*stk, "Running function, the current stack is : ");
-    printf("\nThe initial memory is : \n    ");
-    memory_rgn_dump(mem);
-    printf("\n");
+    if(trace_mem){
+      printf("\nThe initial memory is : \n    ");
+      memory_rgn_dump(mem);
+      printf("\n");
+    }
   }
 
   // TODO:: Care about the result ?
@@ -825,6 +832,12 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = (s32)(p1.di32 < p0.di32);
       pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.lt_u") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      // TODO:: Need to ensure that this is alright
+      r.di32 = (s32)((u32)p1.di32 < (u32)p0.di32);
+      pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.le_s") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -836,6 +849,16 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       // TODO:: Need to ensure that this is alright
       r.di32 = (s32)((u32)p1.di32 <= (u32)p0.di32);
       pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.ne") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 != p0.di32;
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "i32.eq") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 == p0.di32;
+      pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.eqz") == 0){
       Wasm_Data p = {0},  r = {0};
       popstk(p.du64);
@@ -845,6 +868,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       Wasm_Data comp = {0}, val2 = {0};
       popstk(comp.du64); popstk(val2.du64);
       if(comp.di32==0) slice_last(*stk) = val2.du64;
+    } else if (str_cstr_cmp(op, "drop") == 0){
+      Wasm_Data v = {0};
+      popstk(v.du64);
     } else if (str_cstr_cmp(op, "block") == 0){
       // TODO:: It seems that it also takes in 'blocktype' as another argument
       s64 end = find_end_block(opcodes, i);
@@ -866,6 +892,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	  break;
 	}
       }
+      if(pcnt) i++; if(retcnt) i++;
       pushblk_stk(visit_new_blk(stk, end, pcnt, retcnt));
     } else if (str_cstr_cmp(op, "loop") == 0){
       // TODO:: Figure out how loops param work actually 
@@ -883,6 +910,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	  break;
 	}
       }
+      if(pcnt) i++; if(retcnt) i++;
       pushblk_stk(visit_new_blk(stk, i, pcnt, retcnt));
     } else if (str_cstr_cmp(op, "if") == 0){
       // TODO:: It seems that it also takes in 'blocktype' as another argument
@@ -903,6 +931,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	  break;
 	}
       }
+
 
       // Find the end of the block first
       const s64 end1 = find_end_block(opcodes, i);
@@ -925,6 +954,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	}
       }
 
+      if(pcnt) i++; if(retcnt) i++;
       if(comp.di32 != 0){
 	// Execute if block, after jump to 'end2'
 	pushblk_stk(visit_new_blk(stk, end2, pcnt, retcnt));
@@ -1001,6 +1031,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	      break;
 	    }
 	  }
+	  if(pcnt) i++; if(retcnt) i++;
 	  pushblk_stk(visit_new_blk(stk, i, pcnt, retcnt));
 	} 
       }
@@ -1048,13 +1079,15 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	  printf("\n");
 	}
       }
-      if(match_str_suffix(op, cstr_to_str("load")) || 
-	 match_str_suffix(op, cstr_to_str("store")) ||
-	 match_str_suffix(op, cstr_to_str("load8_u")) ||
-	 match_str_prefix(op, cstr_to_str("memory"))){
-	printf("    ");
-	memory_rgn_dump(mem);
-	printf("\n");
+      if(trace_mem){ 
+	if(match_str_suffix(op, cstr_to_str("load")) || 
+	   match_str_suffix(op, cstr_to_str("store")) ||
+	   match_str_suffix(op, cstr_to_str("load8_u")) ||
+	   match_str_prefix(op, cstr_to_str("memory"))){
+	  printf("    ");
+	  memory_rgn_dump(mem);
+	  printf("\n");
+	}
       }
 
     }
@@ -1332,6 +1365,44 @@ u64 wasm_fread(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   }
   return 1;
 }
+
+u64 wasm_fseek(Alloc_Interface, Exec_Context* cxt, void* data){
+  // Three int32 args, 1 int32 return value
+  if(cxt->stk.count < 3) errnret(0, "fseek needs 3 args, (stream, offset, whence)\n");
+  Wasm_Data whence_={0}, offset={0}, stream_inx={0};
+  whence_.du64=slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  offset.du64=slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  stream_inx.du64=slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+
+  File_Ptr_Darray* fptrs = data;
+  if(stream_inx.di32 > fptrs->count){
+    fprintf(stderr, "fseek operation on a file not yet opened\n");
+    return 0;
+  }
+  FILE* stream = slice_inx(*fptrs, stream_inx.di32-1);
+
+  int whence = -1;
+  switch(whence_.di32){
+  case 1: {whence=SEEK_SET; break;}
+  case 2: {whence=SEEK_CUR; break;}
+  case 3: {whence=SEEK_END; break;}
+  }
+
+  Wasm_Data res={0};
+  res.di32 = fseek(stream, offset.di32, whence);
+
+  if(!push_u64_darray(&cxt->stk, res.du64)){
+    fprintf(stderr, "allocation failure\n");
+    return 0;
+  }
+  return 1;
+}
+
+
+  
 u64 wasm_perror(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   // One int32 args: first pointer to filename, second to mode
   if(cxt->stk.count < 1) errnret(0, "popen needs 1 arg, (errstring)\n");
@@ -1348,6 +1419,7 @@ u64 wasm_perror(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   SLICE_FREE(allocr, errstr);
   return 1;
 }
+  
 
 // TODO:: Store this somewhere else
 File_Ptr_Darray fptrs;
@@ -1385,6 +1457,10 @@ void patch_imports(Alloc_Interface allocr, Exec_Context* cxt){
 	slice_inx(cxt->fxns, i).fptr = wasm_fread;
 	slice_inx(cxt->fxns, i).data = &fptrs;
       }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "fseek") == 0){
+	slice_inx(cxt->fxns, i).fptr = wasm_fseek;
+	slice_inx(cxt->fxns, i).data = &fptrs;
+      }
       else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "perror") == 0){
 	slice_inx(cxt->fxns, i).fptr = wasm_perror;
       }
@@ -1399,9 +1475,10 @@ void run_sample(Alloc_Interface allocr, Module* mod, Str entrypath){
   patch_imports(allocr, &exec_cxt);
   // Find the desired exported function
   exec_cxt.trace = true;
-  // Dangerous to enable when large storage is used
   //exec_cxt.trace_vars = true;
-
+  // Dangerous to enable when large storage is used
+  //exec_cxt.trace_mem = true;
+  
   //Cstr fxn = "abs_diff";
   //Cstr fxn = "pick_branch";
   //Cstr fxn = "fibo";
