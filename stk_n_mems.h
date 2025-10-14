@@ -226,7 +226,6 @@ void memory_rgn_memset(Memory_Region* mem, const u32 off, const u32 len, u8 v){
   }
 }
 
-
 int compare_memory_pages(const void* a, const void* b){
   const Memory_Page** pa = (void*)a;
   const Memory_Page** pb = (void*)b;
@@ -260,6 +259,7 @@ void memory_rgn_dump(Memory_Region* mem){
 	printf(" ");
       }
     }
+    printf("\n");
   }
 }
 

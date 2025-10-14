@@ -7,30 +7,38 @@ typedef struct Wasm_Data Wasm_Data;
 struct Wasm_Data {
   enum {
     WASM_DATA_VOID=0, // Cannot actually use this to store items
+    WASM_DATA_I8,
     WASM_DATA_I32,
     WASM_DATA_U32,
     WASM_DATA_F32,
+    WASM_DATA_F64,
     WASM_DATA_U64,
     WASM_DATA_I64,
   } tag;
   union{
+    s8 di8;
     s32 di32;
     u32 du32;
     f32 df32;
+    f64 df64;
     u64 du64;
     u64 di64;
   };
 };
 // Just in case, to prevent any undefined behavior
+static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, di8));
 static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, di32));
 static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, du32));
 static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, df32));
+static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, df64));
 static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, du64));
 static_assert(sizeof(u64) == sizeof(Wasm_Data)-offsetof(Wasm_Data, di64));
 const Cstr wasm_names[] = {
+  [WASM_DATA_I8] = "i8",
   [WASM_DATA_I32] = "i32",
   [WASM_DATA_U32] = "u32",
   [WASM_DATA_F32] = "f32",
+  [WASM_DATA_F64] = "f64",
   [WASM_DATA_U64] = "u64",
   [WASM_DATA_I64] = "i64",
   [WASM_DATA_VOID] = "void",
@@ -38,13 +46,13 @@ const Cstr wasm_names[] = {
 DEF_SLICE(Wasm_Data);
 
 bool wasm_data_is_signed(Wasm_Data d){
-  return d.tag == WASM_DATA_I32 || d.tag == WASM_DATA_I64;
+  return d.tag == WASM_DATA_I8 || d.tag == WASM_DATA_I32 || d.tag == WASM_DATA_I64;
 }
 bool wasm_data_is_unsigned(Wasm_Data d){
   return d.tag == WASM_DATA_U32 || d.tag == WASM_DATA_U64;
 }
 bool wasm_data_is_floating(Wasm_Data d){
-  return d.tag == WASM_DATA_F32;
+  return d.tag == WASM_DATA_F32 || d.tag == WASM_DATA_F64;
 }
 
 Wasm_Data wasm_data_by_type(const Str type_name){
@@ -59,9 +67,11 @@ Wasm_Data wasm_data_by_type(const Str type_name){
 void wasm_data_print(Wasm_Data d){
   printf("%s(", wasm_names[d.tag]);
   switch(d.tag){
+  case WASM_DATA_I8: {printf("%d", (int)d.di8); break;}
   case WASM_DATA_I32: {printf("%ld", (long)d.di32); break;}
   case WASM_DATA_U32: {printf("%lu", (unsigned long)d.du32); break;}
   case WASM_DATA_F32: {printf("%f", (float)d.df32); break;}
+  case WASM_DATA_F64: {printf("%lf", (float)d.df64); break;}
   case WASM_DATA_U64: {printf("%llu", (long long unsigned)d.du64); break;}
   case WASM_DATA_I64: {printf("%lld", (long long)d.di64); break;}
   }
@@ -667,7 +677,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       s64 v;
       if(!parse_as_s64(slice_inx(opcodes, i), &v)){
 	// TODO:: Also print location of source code
-	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+	fprintf(stderr, "Expected %zu-th opcode to be i32 literal, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i)));
 	return 0;
       }
@@ -679,20 +689,34 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       s64 v;
       if(!parse_as_s64(slice_inx(opcodes, i), &v)){
 	// TODO:: Also print location of source code
-	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+	fprintf(stderr, "Expected %zu-th opcode to be i64 literal, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i)));
 	return 0;
       }
       Wasm_Data p = {0};
       p.di64 = v;
       pushstk(p.du64);
+    } else if (str_cstr_cmp(op, "f64.const") == 0){
+      i++; // maybe verify that its not ended yet ??
+      f64 v;
+      if(!parse_as_f64(slice_inx(opcodes, i), &v)){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Expected %zu-th opcode to be f64 literal, found `%.*s`\n",
+		i, str_print(slice_inx(opcodes, i)));
+	return 0;
+      }
+      Wasm_Data p = {0};
+      p.df64 = v;
+      pushstk(p.du64);
     } else if (match_str_suffix(op, cstr_to_str("load")) ||
 	       match_str_suffix(op, cstr_to_str("store"))||
-	       match_str_suffix(op, cstr_to_str("load8_u"))){
+	       match_str_suffix(op, cstr_to_str("load8_u"))||
+	       match_str_suffix(op, cstr_to_str("load8_s"))){
       Wasm_Data val; // For store, these are first popped from stack
 
       const bool to_load = match_str_suffix(op, cstr_to_str("load")) ||
-	match_str_suffix(op, cstr_to_str("load8_u"));
+	match_str_suffix(op, cstr_to_str("load8_u"))||
+	match_str_suffix(op, cstr_to_str("load8_s"));
       if(!to_load) popstk(val.du64);
 
       // Common part of store and load
@@ -736,8 +760,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       fill_ptr_n_size("i64", di64);
       fill_ptr_n_size("u64", du64);
       fill_ptr_n_size("f32", df32);
+      fill_ptr_n_size("f64", df64);
       // TODO:: Handle when none of the values match
-      if(match_str_suffix(op, "8_u")){
+      if(match_str_suffix(op, "8_u")||match_str_suffix(op, "8_s")){
 	sz_dt = 1;
       }
 #undef fill_ptr_n_size
@@ -746,6 +771,11 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
 	(void)memory_rgn_read(mem, offset, sz_dt, pdata);
 	if(match_str_suffix(op, "8_u")){
 	  val.du64 = val.du64 & 0xff;
+	}
+	if(match_str_suffix(op, "8_s")){
+	  val.du64 = val.du64 & 0xff;
+	  // Need to sign extend
+	  val.di64 = val.di8;
 	}
 	pushstk(val.du64);
       } else {
@@ -758,7 +788,39 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       popstk(ptr.du64);
 
       memory_rgn_memset(mem, ptr.di32, len.di32, ch.di32);
+    } else if (str_cstr_cmp(op, "memory.copy") == 0){
+      // args: dst, src, size, no return values
+      Wasm_Data len={0}, src={0}, dst={0};
+      popstk(len.du64);
+      popstk(src.du64);
+      popstk(dst.du64);
 
+      // Since the memory regions can overlap, doing staging buffer method
+      u8_Slice tmp_buff = SLICE_ALLOC(allocr, u8, len.di32);
+      if(!tmp_buff.data){
+	fprintf(stderr, "memory allocation error");
+	return 0;
+      }
+
+      printf("\n----- copying %1$d(%1$x) bytes from %2$d(%2$x) to %3$d(%3$x) ------\n",
+	     len.di32, src.di32, dst.di32);
+
+      if(!memory_rgn_read(&cxt->mem, src.di32, tmp_buff.count, tmp_buff.data)){
+	// TODO:: Memory leak
+	fprintf(stderr, "memory allocation error");
+	return 0;
+      }
+      if(!memory_rgn_write(&cxt->mem, dst.di32, tmp_buff.count, tmp_buff.data)){
+	// TODO:: Memory leak
+	fprintf(stderr, "memory allocation error");
+	return 0;
+      }
+      SLICE_FREE(allocr, tmp_buff);
+    } else if (str_cstr_cmp(op, "f64.convert_i32_s") == 0){
+      Wasm_Data p0 = {0}, r = {0};
+      popstk(p0.du64);
+      r.df64 = p0.di32;
+      pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.sub") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
@@ -768,6 +830,16 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 + p0.di32;
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "f64.add") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.df64 = p1.df64 + p0.df64;
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "f64.neg") == 0){
+      Wasm_Data p0 = {0}, r = {0};
+      popstk(p0.du64);
+      r.df64 = -p0.df64;
       pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.shl") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
@@ -804,6 +876,12 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       }
       // TODO:: Figure out what the deal with '_u' is actually
       r.di32 = (s32)((u32)p_divd.di32 / (u32)p_divr.di32);
+      pushstk(r.du64);
+    } else if (str_cstr_cmp(op, "f64.div") == 0){
+      Wasm_Data p_divr = {0}, p_divd = {0}, r = {0};
+      popstk(p_divr.du64); popstk(p_divd.du64);
+      // For floating points, div by 0 is not a problem
+      r.df64 = p_divd.df64 / p_divr.df64;
       pushstk(r.du64);
     } else if (str_cstr_cmp(op, "i32.gt_s") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
@@ -1082,7 +1160,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       if(trace_mem){ 
 	if(match_str_suffix(op, cstr_to_str("load")) || 
 	   match_str_suffix(op, cstr_to_str("store")) ||
-	   match_str_suffix(op, cstr_to_str("load8_u")) ||
+	   match_str_suffix(op, cstr_to_str("load8_u"))||
+	   match_str_suffix(op, cstr_to_str("load8_s")) ||
 	   match_str_prefix(op, cstr_to_str("memory"))){
 	  printf("    ");
 	  memory_rgn_dump(mem);
@@ -1104,6 +1183,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       case WASM_DATA_I32: {printf("%ld", (long)d.di32); break;}
       case WASM_DATA_U32: {printf("%lu", (unsigned long)d.du32); break;}
       case WASM_DATA_F32: {printf("%f", (float)d.df32); break;}
+      case WASM_DATA_F64: {printf("%lf", (float)d.df64); break;}
       case WASM_DATA_U64: {printf("%llu", (long long unsigned)d.du64); break;}
       }
       printf(") ");
@@ -1475,9 +1555,9 @@ void run_sample(Alloc_Interface allocr, Module* mod, Str entrypath){
   patch_imports(allocr, &exec_cxt);
   // Find the desired exported function
   exec_cxt.trace = true;
-  //exec_cxt.trace_vars = true;
+  exec_cxt.trace_vars = true;
   // Dangerous to enable when large storage is used
-  //exec_cxt.trace_mem = true;
+  exec_cxt.trace_mem = true;
   
   //Cstr fxn = "abs_diff";
   //Cstr fxn = "pick_branch";
@@ -1485,8 +1565,8 @@ void run_sample(Alloc_Interface allocr, Module* mod, Str entrypath){
   //Cstr fxn = "fibo_rec";
   //Cstr fxn = "sub";
   //Cstr fxn = "print_sum";
-  //Cstr fxn = "run_raylib";
-  Cstr fxn = "main_";
+  Cstr fxn = "run_raylib";
+  //Cstr fxn = "main_";
 
   // Find the entry of the fxn : first find index, then use fxn
   size_t finx = 0;

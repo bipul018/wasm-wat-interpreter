@@ -144,6 +144,45 @@
     call 0)
   (func (;17;) (type 0) (param i32)
     (local i32 i32)
+
+    (; Normal one page to next within that page ;)
+    i32.const 0x40000 (; destination of data ;)
+    i32.const 1056 (; source of data ;)
+    i32.const 60 (; length to copy ;)
+    memory.copy
+
+    (; One normal page to another between pages ;)
+    i32.const 0x4fff0 (; destination of data ;)
+    i32.const 1056 (; source of data ;)
+    i32.const 60 (; length to copy ;)
+    memory.copy
+    
+    (; One betwen pages to another normal page ;)
+
+    i32.const 0x7ff00 (; destination of data ;)
+    i32.const 0x4fff0 (; source of data ;)
+    i32.const 60 (; length to copy ;)
+    memory.copy
+
+    (; Bringing it forwards ;)
+
+    i32.const 0x4ffe0 (; destination of data ;)
+    i32.const 0x4fff0 (; source of data ;)
+    i32.const 60 (; length to copy ;)
+    memory.copy
+
+    (; Sending it forwards ;)
+
+    i32.const 0x4fff6 (; destination of data ;)
+    i32.const 0x4ffe0 (; source of data ;)
+    i32.const 60 (; length to copy ;)
+    memory.copy
+
+
+
+
+    quitit
+    
     global.get 0
     i32.const 16
     i32.sub

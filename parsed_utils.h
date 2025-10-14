@@ -39,9 +39,8 @@ bool parse_as_string(Parse_Node* str_node, Str* out_str){
 // Parse as u64 integer
 bool parse_as_u64(Str str, u64* out){
   char* endptr = str.data;
-  // TODO:: Is this safe?
-  long long v = strtoll(endptr, &endptr, 0);
-  if((void*)endptr != (str.data + str.count) || v < 0){
+  unsigned long long v = strtoull(endptr, &endptr, 0);
+  if((void*)endptr != (str.data + str.count)){
     //fprintf(stderr, "Expected unsigned integer index, found `%.*s`\n",
     // str_print(str));
     return false;
@@ -52,7 +51,6 @@ bool parse_as_u64(Str str, u64* out){
 // Parse as s64 integer
 bool parse_as_s64(Str str, s64* out){
   char* endptr = str.data;
-  // TODO:: Is this safe?
   long long v = strtoll(endptr, &endptr, 0);
   if((void*)endptr != (str.data + str.count)){
     //fprintf(stderr, "Expected signed integer, found `%.*s`\n",
@@ -62,5 +60,15 @@ bool parse_as_s64(Str str, s64* out){
   *out = v;
   return true;
 }
-
+// Parse as f64 integer
+bool parse_as_f64(Str str, f64* out){
+  char* endptr = str.data;
+  // TODO:: Is this safe?
+  long double v = strtold(endptr, &endptr);
+  if((void*)endptr != (str.data + str.count)){
+    return false;
+  }
+  *out = v;
+  return true;
+}
 DEF_SLICE(Parse_Node_Ptr);
