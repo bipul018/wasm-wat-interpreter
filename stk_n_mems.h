@@ -212,6 +212,18 @@ Str memory_rgn_cstrdup(Alloc_Interface allocr, Memory_Region* mem, const size_t 
   return str;
 }
 
+u8_Slice memory_rgn_copy_from(Alloc_Interface allocr, Memory_Region* mem, const u32 off, const u32 len){
+  u8_Slice res = SLICE_ALLOC(allocr, u8, len);
+  if(!res.data){
+    return (u8_Slice){0};
+  }
+  if(!memory_rgn_read(mem, off, res.count, res.data)){
+    SLICE_FREE(allocr, res);
+    return (u8_Slice){0};
+  }
+  return res;
+}
+
 // TODO:: Test this
 void memory_rgn_memset(Memory_Region* mem, const u32 off, const u32 len, u8 v){
   // TODO:: Implement traps and trap when memory fault
@@ -219,10 +231,18 @@ void memory_rgn_memset(Memory_Region* mem, const u32 off, const u32 len, u8 v){
   while(memory_rgn_iter(&iter)){
     Memory_Page* page = memory_rgn_get_page(mem, iter.page_inx);
     if(!page) {
-      // TODO:: Memory fault later, for now skip
-    } else {
-      memset(page->data+iter.page_off, v, iter.page_size);
+      page = alloc_mem(mem->pages.allocr, sizeof(Memory_Page),
+					alignof(Memory_Page));
+      if(!page) {
+	continue; // TODO:: Error out
+      }
+      if(!push_Memory_Page_Ptr_darray(&mem->pages, page)){
+	free_mem(mem->pages.allocr, page);
+	continue; // TODO:: Error out
+      }
+      page->inx = iter.page_inx;
     }
+    memset(page->data+iter.page_off, v, iter.page_size);
   }
 }
 
@@ -345,4 +365,4 @@ void run_memory_page_sample(Alloc_Interface allocr){
   memory_rgn_deinit(&mem);
   printf("------------------------------------------------------\n");
 }
-// TODO:: Test across pages str reading, str len, memset, memcpy
+// TODO:: Test across pages str reading, str len, memset, memcpy, memset

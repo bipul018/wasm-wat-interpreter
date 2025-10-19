@@ -167,3 +167,25 @@ void try_printing_module(const Module* mod){
   }
   printf("\n");
 }
+
+// Some utilities
+
+// Returns -1 on failure
+s64 mod_find_export_s_(const Module* mod, Str name, s32 export_type_inx){
+  for_slice(mod->exports, i){
+    const Export expt = slice_inx(mod->exports, i);
+    if(str_cmp(expt.name, name) == 0 &&
+       expt.export_type == export_type_inx){
+      return expt.export_idx;
+    }
+  }
+  return -1;
+}
+s64 mod_find_export_c_(const Module* mod, Cstr name, s32 export_type_inx){
+  return mod_find_export_s_(mod, cstr_to_str(name), export_type_inx);
+}
+
+#define mod_find_export(mod, name, export_type_inx)			\
+  _Generic((name), Str: mod_find_export_s_, default: mod_find_export_c_)	\
+  ((mod), (name), (export_type_inx))
+

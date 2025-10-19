@@ -13,6 +13,9 @@ struct Import {
   enum {
     UNKNOWN_IMPORT_TYPE,
     FUNCTION_IMPORT_TYPE,
+    TABLE_IMPORT_TYPE,
+    GLOBAL_IMPORT_TYPE,
+    MEMORY_IMPORT_TYPE,
   } import_type;
   Str import_type_name; // Maybe this will be optional later
   Parse_Node* import_details; // Polymorphic, so to be used later
@@ -65,7 +68,10 @@ bool parse_import(Alloc_Interface allocr, Parse_Node* root, Import* impt){
       goto was_error;
     }
     impt->import_type_name = dets->data;
-    if(str_cstr_cmp(dets->data, "func") == 0) impt->import_type = FUNCTION_IMPORT_TYPE;
+    if(str_cmp(dets->data, "func") == 0) impt->import_type = FUNCTION_IMPORT_TYPE;
+    else if(str_cmp(dets->data, "global") == 0) impt->import_type = GLOBAL_IMPORT_TYPE;
+    else if(str_cmp(dets->data, "table") == 0) impt->import_type = TABLE_IMPORT_TYPE;
+    else if(str_cmp(dets->data, "memory") == 0) impt->import_type = MEMORY_IMPORT_TYPE;
     else impt->import_type = UNKNOWN_IMPORT_TYPE;
 
     impt->import_details = dets->children.data[0];
