@@ -76,6 +76,8 @@ DEF_STR_CSTR_FXN(match_str_suffix_, bool);
   
 
 #define str_print(str) ((int)(str).count), (str).data
+
+DEF_SLICE(s32);
 #include "lines_and_files.h"
 #include "parse_node.h"
 #include "parse_into_trees.h"

@@ -148,6 +148,7 @@ struct Exec_Context {
  // TODO:: Somehow detect stack overflow or change the position of stack
   Memory_Region mem;
   Wasm_Fxn_Slice fxns;
+  u64_Darray fxn_table; // Maybe u32 is good enough ?
   // TODO:: Implement immutability
   Wasm_Data_Slice globals;
 
@@ -177,6 +178,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
     .mod=mod,
     .stk={.allocr=allocr},
     .blk_stk={.allocr=allocr},
+    .fxn_table={.allocr=allocr},
     .trace = false,
     .trace_vars = false,
     .trace_mem = false,
@@ -367,6 +369,65 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
     fxn_cnt++;    
   }
 
+  // Initialize the function table
+  for_slice(mod->unknowns, i){
+    // TODO:: Remove this parsing
+    Parse_Node* nod = slice_inx(mod->unknowns, i);
+    if(str_cmp(nod->data, "elem") == 0){
+      // Expect the first entry to be global.get (expect -shared)
+      if(nod->children.count != 3){
+	fprintf(stderr, "Expected exactly 3 children for `elem`, found %zu\n",
+		nod->children.count);
+	// TODO:: Signal error here somehow
+	assert(false);
+      }
+
+      Parse_Node *a = slice_inx(nod->children, 0),
+	*b = slice_inx(nod->children, 1),
+	*c = slice_inx(nod->children, 2);
+      // Expect the first to be global.get,
+      // TODO:: Care about the table index also
+      if(str_cmp(a->data, "global.get") != 0){
+	fprintf(stderr, "Currently only global.get type of exports are "
+		"expected, found `%.*s`\n", str_print(a->data));
+	// TODO:: Signal error here somehow
+	assert(false);
+      }
+
+      // Expect the second one to be 'func' type
+      if(str_cmp(b->data, "func") != 0){
+	fprintf(stderr, "Expected only a 'func' type table referenced, found "
+		"`%.*s`\n", str_print(b->data));
+	// TODO:: Signal error here somehow
+	assert(false);	
+      }
+
+      if(c->children.count != 0){
+	fprintf(stderr, "Expected no children for function index, found %zu\n",
+		c->children.count);
+	// TODO:: Signal error here somehow
+	assert(false);
+      }
+
+      u64 finx;
+      if(!parse_as_u64(c->data, &finx)){
+	fprintf(stderr, "Expected unsigned integer for function index, found `%.*s`\n",
+		str_print(c->data));
+	// TODO:: Signal error here somehow
+	assert(false);
+      }
+
+      if(!push_u64_darray(&cxt.fxn_table, finx)){
+	fprintf(stderr, "Could not push to function table\n");
+	// TODO:: Signal error here somehow
+	assert(false);
+      }
+      printf(".... Filled function %lu at function table index %lu\n",
+	     (unsigned long)finx, (unsigned long)(cxt.fxn_table.count -1));
+      
+    }
+  }
+
   // TODO:: Run the start function here
   //        wasm std says that no extern things are accessible in the start fxn
   //        but for now the print fxns are made accessible since hardcoded
@@ -420,6 +481,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
 void deinit_exec_context(Alloc_Interface allocr, Exec_Context* cxt){
   if(!cxt) return;
   SLICE_FREE(allocr, cxt->fxns);
+  (void)resize_u64_darray(&cxt->fxn_table, 0);
   (void)resize_u64_darray(&cxt->stk, 0);
   (void)resize_u64_darray(&cxt->blk_stk, 0);
   memory_rgn_deinit(&cxt->mem);
@@ -1040,8 +1102,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice 
       popstk(ch.du64);
       popstk(ptr.du64);
 
-      printf("$$$$$$$ Filling the memory at %x with %d for %d\n",
-	     ptr.di32, ch.di32, len.di32);
+      //printf("$$$$$$$ Filling the memory at %x with %d for %d\n",
+      //ptr.di32, ch.di32, len.di32);
 
       memory_rgn_memset(mem, ptr.di32, len.di32, ch.di32);
     } else if (str_cstr_cmp(op, "memory.copy") == 0){
@@ -1530,6 +1592,138 @@ u64 draw_fps(Alloc_Interface, Exec_Context* cxt, void* data){
   DrawFPS(px.di32, py.di32);
   return 1;
 }
+
+#include <stdarg.h>
+bool str_builder_append(Str_Builder* out, Cstr fmt, ...){
+  va_list args = {0};
+  va_start(args, fmt);
+  const size_t sz2 = vsnprintf(nullptr, 0, fmt, args);
+  va_end(args);
+
+  // Ensure last element was 0
+  size_t cnt = out->count;
+  if(cnt && slice_last(*out) == 0){
+    cnt--;
+  }
+
+  if(!resize_u8_darray(out, cnt + sz2 + 1)) return false;
+  
+  va_start(args, fmt);
+  (void)vsnprintf(&slice_inx(*out, cnt), 1+sz2, fmt, args);
+  va_end(args);
+
+  //printf("-- Appended to str builder (%zu): `", sz2);
+  //va_start(args, fmt);
+  //vprintf(fmt, args);
+  //va_end(args);
+  //printf("` (%zu)------\n", out->count);
+  
+  return true;
+}
+
+Str print_to_str(Alloc_Interface allocr, Exec_Context* cxt,
+		      s32 fmtstr_off, s32 argoff){
+  //  Copy the string first
+  Str fmtstr = memory_rgn_cstrdup(allocr, &cxt->mem, fmtstr_off);
+  if(!fmtstr.data){
+    fprintf(stderr, "allocation/memory region read failure\n");
+    goto return_from_fxn;
+  }
+  Str_Builder out = {.allocr=allocr}; // Will be 'disowned'
+
+  for_slice(fmtstr, fmtinx){
+    char ch = slice_inx(fmtstr, fmtinx);
+    if(ch == 0) break;
+    if(ch == '%'){
+      fmtinx++; ch = slice_inx(fmtstr, fmtinx);
+      if(ch == 'd'){
+	s32 v;
+	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
+	  fprintf(stderr, "Couldnt read at %zu\n", (size_t)argoff);
+	  goto return_from_fxn;
+	}
+	argoff+=sizeof(s32);
+	if(!str_builder_append(&out, "%ld", (long)v)){
+	  fprintf(stderr, "Allocation error\n");
+	  goto return_from_fxn;
+	}
+      } else if(ch == 'l' && ((fmtinx+1)<fmtstr.count) &&
+		slice_inx(fmtstr, fmtinx+1) == 'x'){
+	fmtinx++;
+	s32 v;
+	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
+	  fprintf(stderr, "Couldnt read at %zu\n", (size_t)argoff);
+	  goto return_from_fxn;
+	}
+	argoff+=sizeof(s32);
+	if(!str_builder_append(&out, "%lx", (long)v)){
+	  fprintf(stderr, "Allocation error\n");
+	  goto return_from_fxn;
+	}
+      } else if(ch == 's') {
+	s32 v;
+	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
+	  fprintf(stderr, "Couldnt read at %zu\n", (size_t)argoff);
+	  goto return_from_fxn;
+	}
+	argoff+=sizeof(s32);
+
+	// Read another string
+	Str argstr = memory_rgn_cstrdup(allocr, &cxt->mem, v);
+	if(!argstr.data){
+	  fprintf(stderr, "allocation or memory read failure\n");
+	  goto return_from_fxn;
+	}
+	if(!str_builder_append(&out, "%.*s", str_print(argstr))){
+	  fprintf(stderr, "Allocation error\n");
+	  goto return_from_fxn;
+	}
+	SLICE_FREE(allocr, argstr);
+      } else if(match_str_prefix(str_slice(fmtstr, fmtinx, fmtstr.count-1), ".*s")) {
+	fmtinx+=2;
+	s32 len;
+	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &len)){
+	  fprintf(stderr, "Couldnt read at %zu\n", (size_t)argoff);
+	  goto return_from_fxn;
+	}
+	argoff+=sizeof(s32);
+
+	s32 v;
+	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
+	  fprintf(stderr, "Couldnt read at %zu\n", (size_t)argoff);
+	  goto return_from_fxn;
+	}
+	argoff+=sizeof(s32);
+
+	// Read another string
+	Str argstr = memory_rgn_copy_from(allocr, &cxt->mem, v, len);
+	if(!argstr.data){
+	  fprintf(stderr, "allocation or memory read failure\n");
+	  goto return_from_fxn;
+	}
+	if(!str_builder_append(&out, "%.*s", str_print(argstr))){
+	  fprintf(stderr, "Allocation error\n");
+	  goto return_from_fxn;
+	}
+	SLICE_FREE(allocr, argstr);
+      } else {
+	if(!str_builder_append(&out, "%%%c", ch)){
+	  fprintf(stderr, "Allocation error\n");
+	  goto return_from_fxn;
+	}
+      }
+    } else {
+      if(!str_builder_append(&out, "%c", ch)){
+	fprintf(stderr, "Allocation error\n");
+	goto return_from_fxn;
+      }
+    }
+  }
+
+ return_from_fxn:
+  SLICE_FREE(allocr, fmtstr);
+  return (Str){.data = out.data, .count = out.count};
+}
 u64 printstr(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   // Two int32 args: first pointer to cstr, second pointer to varargs
   if(cxt->stk.count < 2) errnret(0, "printstr needs 2 args, (cstr,varargs)\n");
@@ -1539,74 +1733,35 @@ u64 printstr(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   cstr.du64 = slice_last(cxt->stk);
   if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
 
-
-  // For now, go character by character?
-  // TODO:: Figure out some better more optimal way
-  size_t off = cstr.di32;
-  // TODO:: Also for the vararg
-  size_t argoff = varargs.di32;
-
-  //  Copy the string first
-  Str fmtstr = memory_rgn_cstrdup(allocr, &cxt->mem, off);
-  if(!fmtstr.data){
-    fprintf(stderr, "allocation/memory region read failure\n");
-    return 0;
-  }
-  for_slice(fmtstr, fmtinx){
-    char ch = slice_inx(fmtstr, fmtinx);
-    if(ch == 0) break;
-    if(ch == '%'){
-      fmtinx++;
-      ch = slice_inx(fmtstr, fmtinx);
-      if(ch == 'd'){
-	s32 v;
-	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
-	  // TODO:: memory leak
-	  fprintf(stderr, "Couldnt read at %zu\n", argoff);
-	  return 0;
-	}
-	argoff+=sizeof(s32);
-	printf("%ld", (long)v);
-      } else if(ch == 'l' && ((fmtinx+1)<fmtstr.count) &&
-		slice_inx(fmtstr, fmtinx+1) == 'x'){
-	fmtinx++;
-	s32 v;
-	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
-	  // TODO:: memory leak
-	  fprintf(stderr, "Couldnt read at %zu\n", argoff);
-	  return 0;
-	}
-	argoff+=sizeof(s32);
-	printf("%lx", (long)v);
-      } else if(ch == 's') {
-	s32 v;
-	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
-	  // TODO:: memory leak
-	  fprintf(stderr, "Couldnt read at %zu\n", argoff);
-	  return 0;
-	}
-	argoff+=sizeof(s32);
-
-	// Read another string
-	Str argstr = memory_rgn_cstrdup(allocr, &cxt->mem, v);
-	if(!argstr.data){
-	  // TODO:: memory leak
-	  fprintf(stderr, "allocation or memory read failure\n");
-	  return 0;
-	}
-	printf("%.*s", str_print(argstr));
-	SLICE_FREE(allocr, argstr);
-      } else {
-	printf("%%%c", ch);
-      }
-    } else {
-      printf("%c", ch);
-    }
-  }
-  SLICE_FREE(allocr, fmtstr);
+  Str printed_str = print_to_str(allocr, cxt, cstr.di32, varargs.di32);
+  printf("%.*s", str_print(printed_str));
+  SLICE_FREE(allocr, printed_str);
   return 1;
 }
+u64 wasm_sprintf(Alloc_Interface allocr, Exec_Context* cxt, void* data){
+  // 3 Args: <buffer offset> <format str offset> <...varargs offset>
+  // 1 Return value: Length of written characters except for the null byte
+  if(cxt->stk.count < 3) errnret(0, "printstr needs 3 args, (dst,cstr,varargs)\n");
+  Wasm_Data dst_off={0},cstr={0},varargs={0};
+  varargs.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  cstr.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  dst_off.du64 = slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
 
+  Str printed_str = print_to_str(allocr, cxt, cstr.di32, varargs.di32);
+
+  if(!memory_rgn_write(&cxt->mem, dst_off.di32, printed_str.count, printed_str.data)){
+    SLICE_FREE(allocr, printed_str);
+    errnret(0, "memory region write failure\n");
+  }
+
+  const Wasm_Data res = {.di32 = printed_str.count};
+  SLICE_FREE(allocr, printed_str);
+  if(!push_u64_darray(&cxt->stk, res.du64)) errnret(0, "allocation failure\n");
+  return 1;
+}
 typedef FILE* File_Ptr;
 DEF_DARRAY(File_Ptr, 1);
 
@@ -1795,6 +1950,38 @@ u64 wasm_memcmp(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   return 1;
 }
 
+// TODO:: Make this thread local thing later
+typedef struct Data_For_Qsort Data_For_Qsort;
+struct Data_For_Qsort {
+  Exec_Context* cxt;
+  Alloc_Interface allocr;
+  // Reserved places in the memory heap
+  u32 com_finx;
+} wasm_qsort_glob_data;
+int wasm_qsort_comparator(const void* a, const void* b){
+  // The pointers are values to indices on the heap for the array
+
+  const s32* inx1 = a;
+  const s32* inx2 = b;
+  // TODO:: Handle if error
+  Wasm_Data d = {0};
+  d.di32 = *inx1;
+  (void)push_u64_darray(&wasm_qsort_glob_data.cxt->stk,
+			d.du64);
+  d.di32 = *inx2;
+  (void)push_u64_darray(&wasm_qsort_glob_data.cxt->stk,
+			d.du64);
+
+  (void)exec_wasm_fxn(wasm_qsort_glob_data.allocr,
+		      wasm_qsort_glob_data.cxt,
+		      wasm_qsort_glob_data.com_finx);
+  // Assume that there is value on stack
+  d.du64 = slice_last(wasm_qsort_glob_data.cxt->stk);
+  (void)pop_u64_darray(&wasm_qsort_glob_data.cxt->stk, 1);
+
+  return d.di32;
+}
+
 // Maybe this has to be promoted to some fxn in memory pages file
 u64 wasm_qsort(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   // Four args, <base inx, count(nmemb), elemsize(size), comparator>
@@ -1809,28 +1996,91 @@ u64 wasm_qsort(Alloc_Interface allocr, Exec_Context* cxt, void* data){
   base_inx.du64=slice_last(cxt->stk);
   if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
 
-  u8_Slice base = memory_rgn_copy_from(allocr, &cxt->mem,
-				     base_inx.di32,
-				     count.di32*elemsize.di32);
+  // Array to later rearrange data back
+  u8_Slice base = SLICE_ALLOC(allocr, u8, count.di32*elemsize.di32);
   if(!base.data){
     fprintf(stderr, "allocation/memory region read failure\n");
     return 0;
   }
 
-  fprintf(stderr, "TODO:: yet to implement qsort, args are: \n"
-	  "base @ %d, count = %d, elemsize = %d (total size = %zu)\n"
-	  "and the comparator is at %d\n", base_inx.di32, count.di32,
-	  elemsize.di32, base.count, comparator.di32);
-  return 0;
-  
-
-  if(!memory_rgn_write(&cxt->mem, base_inx.di32, base.count, base.data)){
-    SLICE_FREE(allocr, base);
+  // Create an array of s32
+  s32_Slice inxes = SLICE_ALLOC(allocr, s32, count.di32);
+  if(!inxes.data){
     fprintf(stderr, "allocation/memory region read failure\n");
     return 0;
   }
+  for_slice(inxes, i){
+    inxes.data[i] = base_inx.di32 + i * elemsize.di32;
+  }
+
+  //fprintf(stderr, "TODO:: yet to implement qsort, args are: \n"
+  //	  "base @ %d, count = %d, elemsize = %d (total size = %zu)\n"
+  //	  "and the comparator is at %d\n", base_inx.di32, count.di32,
+  //	  elemsize.di32, base.count, comparator.di32);
+  //return 0;
+
+  wasm_qsort_glob_data.cxt = cxt;
+  wasm_qsort_glob_data.allocr = allocr;
+
+  // Find the comparator finx from the table array
+  wasm_qsort_glob_data.com_finx = slice_inx(cxt->fxn_table, comparator.di32);
+  qsort(inxes.data, inxes.count, sizeof(inxes.data[0]), wasm_qsort_comparator);
+  
+  // Read the data in the sorted order
+  for_slice(inxes, i){
+    s32 wasm_off = inxes.data[i];
+    u32 base_off = wasm_off - base_inx.di32;
+
+    (void)slice_inx(base, base_off + elemsize.di32-1); // triggering the assert
+    if(!memory_rgn_read(&cxt->mem, wasm_off, elemsize.di32,
+			&slice_inx(base, base_off))){
+      fprintf(stderr, "memory region read failure\n");
+      return 0;
+    }
+  }
+  // Write back the data
+  if(!memory_rgn_write(&cxt->mem, base_inx.di32, base.count,
+		      base.data)){
+    fprintf(stderr, "memory region write failure\n");
+    return 0;
+  }
+
+  SLICE_FREE(allocr, inxes);
   SLICE_FREE(allocr, base);
 
+  return 1;
+}
+
+u64 wasm_strcmp(Alloc_Interface allocr, Exec_Context* cxt, void* data){
+  // Three args, <s1 inx, s2 inx> one return value <int>
+  Wasm_Data s1_inx={0}, s2_inx={0};
+  s2_inx.du64=slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+  s1_inx.du64=slice_last(cxt->stk);
+  if(!pop_u64_darray(&cxt->stk, 1)) errnret(0, "allocation failure\n");
+
+  Str s1 = memory_rgn_cstrdup(allocr, &cxt->mem, s1_inx.di32);
+  if(!s1.data){
+    fprintf(stderr, "allocation/memory region read failure\n");
+    return 0;
+  }
+  Str s2 = memory_rgn_cstrdup(allocr, &cxt->mem, s2_inx.di32);
+  if(!s2.data){
+    SLICE_FREE(allocr, s1);
+    fprintf(stderr, "allocation/memory region read failure\n");
+    return 0;
+  }
+
+  Wasm_Data res = {0};
+  res.di32 = str_cmp(s1, s2); // Using my wrapper cuz whynot
+  
+  SLICE_FREE(allocr, s1);
+  SLICE_FREE(allocr, s2);
+
+  if(!push_u64_darray(&cxt->stk, res.du64)){
+    fprintf(stderr, "allocation failure\n");
+    return 0;
+  }
   return 1;
 }
 
@@ -1862,6 +2112,9 @@ void patch_imports(Alloc_Interface allocr, Exec_Context* cxt){
       else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "printstr") == 0){
 	slice_inx(cxt->fxns, i).fptr = printstr;
       }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "sprintf") == 0){
+	slice_inx(cxt->fxns, i).fptr = wasm_sprintf;
+      }
       else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "fopen") == 0){
 	slice_inx(cxt->fxns, i).fptr = wasm_fopen;
 	slice_inx(cxt->fxns, i).data = &fptrs;
@@ -1883,6 +2136,10 @@ void patch_imports(Alloc_Interface allocr, Exec_Context* cxt){
       else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "qsort") == 0){
 	slice_inx(cxt->fxns, i).fptr = wasm_qsort;
       }
+      else if(str_cstr_cmp(((Import*)slice_inx(cxt->fxns, i).data)->self_name, "strcmp") == 0){
+	slice_inx(cxt->fxns, i).fptr = wasm_strcmp;
+      }
+
     }
   }
 }
