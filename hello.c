@@ -1,3 +1,4 @@
+#include <stddef.h>
 // file: hello.c
 int v[5]={0x2227, 0x32, 0x33, 0x34, 0x35};
 int add(int a, int b) {
@@ -58,6 +59,12 @@ void draw_fps(int x, int y);
 
 void printstr(const char* fmtstr, ...);
 
+void qsort(void *base, size_t nmemb, size_t size,
+	   int (*compar)(const void *, const void *));
+
+int compare(const void* a, const void* b){
+  return (*(int*)a - *(int*)b);
+}
 void run_raylib(int dummy_arg){
   (void)dummy_arg;
   init_window(800, 800);
@@ -79,6 +86,23 @@ void run_raylib(int dummy_arg){
   const int steps = 100;
 
   printstr("Hello, beginning the %s operation now %d %d\n", "<printing>", 0xf3, 0x4a);
+
+  int vals[] = {
+    40, 30, 20, 10, 15, 12, 16,
+  };
+
+#define printvals()						\
+  do{								\
+    for(int i = 0; i < sizeof(vals)/sizeof(vals[0]); ++i){	\
+      printstr("%d ", vals[i]);					\
+    }								\
+    printstr("\n");						\
+  }while(0)
+  
+  printvals();
+  qsort(vals, sizeof(vals)/sizeof(vals[0]), sizeof(vals[0]), compare);
+  printvals();
+
 
   while(window_should_close() == 0){
     begin_drawing();

@@ -231,13 +231,13 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
   struct {
     Cstr name;
     u64 value; // The value if not compatible is to be made so first
-    bool imported;
+    bool imported; // If already true, then its 'optional'
   } imports[] = {
     {"__stack_pointer", (u64)2*PAGE_SIZE},
     {"__memory_base", (u64)2*PAGE_SIZE},
-    {"__table_base", 0}, // TODO:: Understand tables
-    {"__heap_base", (u64)(2+pages_needed)*PAGE_SIZE},
-    {"__heap_end",  (u64)(pages_needed+50) * PAGE_SIZE},
+    {"__table_base", 0, true}, // TODO:: Understand tables
+    {"__heap_base", (u64)(2+pages_needed)*PAGE_SIZE, true},
+    {"__heap_end",  (u64)(pages_needed+50) * PAGE_SIZE, true},
   };
   const size_t glob_imprt_cnt = _countof(imports);
 
@@ -2024,14 +2024,32 @@ u64 wasm_qsort(Alloc_Interface allocr, Exec_Context* cxt, void* data){
 
   // Find the comparator finx from the table array
   wasm_qsort_glob_data.com_finx = slice_inx(cxt->fxn_table, comparator.di32);
+
+  printf("\n**** Before running qsort ****\n");
+  for_slice(inxes, i){
+    printf("%d ", slice_inx(inxes, i));
+  }
+  printf("\n******************************\n");
+
   qsort(inxes.data, inxes.count, sizeof(inxes.data[0]), wasm_qsort_comparator);
   
+  printf("**** After running qsort ****\n");
+  for_slice(inxes, i){
+    printf("%d ", slice_inx(inxes, i));
+  }
+  printf("\n******************************\n");
+
+
   // Read the data in the sorted order
   for_slice(inxes, i){
     s32 wasm_off = inxes.data[i];
-    u32 base_off = wasm_off - base_inx.di32;
+    u32 base_off = i * elemsize.di32;
 
     (void)slice_inx(base, base_off + elemsize.di32-1); // triggering the assert
+
+    printf("%d from %d -> %p\n", wasm_off, elemsize.di32,
+	   &slice_inx(base, base_off));
+
     if(!memory_rgn_read(&cxt->mem, wasm_off, elemsize.di32,
 			&slice_inx(base, base_off))){
       fprintf(stderr, "memory region read failure\n");
@@ -2162,8 +2180,8 @@ void run_sample(Alloc_Interface allocr, Module* mod, Str entrypath){
   //Cstr fxn = "fibo_rec";
   //Cstr fxn = "sub";
   //Cstr fxn = "print_sum";
-  //Cstr fxn = "run_raylib";
-  Cstr fxn = "main_";
+  Cstr fxn = "run_raylib";
+  //Cstr fxn = "main_";
 
   // Find the entry of the fxn : first find index, then use fxn
   s32 finx = mod_find_export(mod, fxn, FUNCTION_EXPORT_TYPE);

@@ -43,15 +43,30 @@ set -xe
 
 clang \
 --target=wasm32 \
--Wl,--import-memory \
 -nostdlib \
 -Os \
 hello.c \
 -o hello.wasm \
 -Wl,--no-entry \
--Wl,--export-all \
--Wl,--export=__stack_pointer \
+-fuse-ld=lld \
+      -fident \
+      --shared -fPIC \
 -Wl,--allow-undefined \
--fuse-ld=lld
+-Wl,--export=add \
+-Wl,--export=sub \
+-Wl,--export=abs_diff \
+-Wl,--export=pick_branch \
+-Wl,--export=fibo \
+-Wl,--export=fibo_rec \
+-Wl,--export=print_sum \
+-Wl,--export=run_raylib \
+
+
+# -Wl,--export-all \
+# -Wl,--export=__stack_pointer \
+
+
+
+#-Wl,--import-memory \
 
 wasm2wat hello.wasm -o hello.wat

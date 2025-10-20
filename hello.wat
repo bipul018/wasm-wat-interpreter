@@ -1,40 +1,48 @@
 (module
-  (type (;0;) (func (param i32)))
-  (type (;1;) (func (param i32 i32)))
-  (type (;2;) (func (param i32 i32) (result i32)))
+  (type (;0;) (func (param i32 i32) (result i32)))
+  (type (;1;) (func (param i32)))
+  (type (;2;) (func (param i32 i32)))
   (type (;3;) (func))
   (type (;4;) (func (param i32) (result i32)))
-  (type (;5;) (func (result i32)))
-  (import "env" "printint" (func (;0;) (type 0)))
-  (import "env" "init_window" (func (;1;) (type 1)))
-  (import "env" "printstr" (func (;2;) (type 1)))
-  (import "env" "window_should_close" (func (;3;) (type 5)))
-  (import "env" "begin_drawing" (func (;4;) (type 3)))
-  (import "env" "clear_background" (func (;5;) (type 0)))
-  (import "env" "draw_fps" (func (;6;) (type 1)))
-  (import "env" "end_drawing" (func (;7;) (type 3)))
-  (import "env" "printhex" (func (;8;) (type 0)))
-  (import "env" "memory" (memory (;0;) 2))
-  (func (;9;) (type 3))
-  (func (;10;) (type 2) (param i32 i32) (result i32)
+  (type (;5;) (func (param i32 i32 i32 i32)))
+  (type (;6;) (func (result i32)))
+  (import "env" "printint" (func (;0;) (type 1)))
+  (import "env" "init_window" (func (;1;) (type 2)))
+  (import "env" "printstr" (func (;2;) (type 2)))
+  (import "env" "qsort" (func (;3;) (type 5)))
+  (import "env" "window_should_close" (func (;4;) (type 6)))
+  (import "env" "begin_drawing" (func (;5;) (type 3)))
+  (import "env" "clear_background" (func (;6;) (type 1)))
+  (import "env" "draw_fps" (func (;7;) (type 2)))
+  (import "env" "end_drawing" (func (;8;) (type 3)))
+  (import "env" "printhex" (func (;9;) (type 1)))
+  (import "env" "__stack_pointer" (global (;0;) (mut i32)))
+  (import "env" "__memory_base" (global (;1;) i32))
+  (import "env" "__table_base" (global (;2;) i32))
+  (import "env" "memory" (memory (;0;) 1))
+  (import "env" "__indirect_function_table" (table (;0;) 1 funcref))
+  (func (;10;) (type 0) (param i32 i32) (result i32)
     local.get 0
     local.get 1
     i32.add)
-  (func (;11;) (type 2) (param i32 i32) (result i32)
-    (local i32)
+  (func (;11;) (type 0) (param i32 i32) (result i32)
+    (local i32 i32)
+    global.get 1
+    i32.const 128
+    i32.add
+    local.tee 2
     local.get 0
     i32.const 2
     i32.shl
-    i32.const 1120
     i32.add
     local.get 0
     local.get 1
     i32.sub
-    local.tee 2
+    local.tee 3
     i32.store
-    i32.const 1120
-    i32.load
     local.get 2
+    i32.load
+    local.get 3
     i32.const 1
     i32.shl
     local.get 0
@@ -42,7 +50,7 @@
     i32.mul
     i32.sub
     i32.add)
-  (func (;12;) (type 2) (param i32 i32) (result i32)
+  (func (;12;) (type 0) (param i32 i32) (result i32)
     local.get 0
     local.get 1
     i32.sub
@@ -54,7 +62,7 @@
     i32.xor
     local.get 0
     i32.sub)
-  (func (;13;) (type 2) (param i32 i32) (result i32)
+  (func (;13;) (type 0) (param i32 i32) (result i32)
     local.get 0
     i32.const 0
     i32.gt_s
@@ -137,54 +145,21 @@
     local.get 0
     local.get 1
     i32.add)
-  (func (;16;) (type 1) (param i32 i32)
+  (func (;16;) (type 2) (param i32 i32)
     local.get 0
     local.get 1
     i32.add
     call 0)
-  (func (;17;) (type 0) (param i32)
+  (func (;17;) (type 0) (param i32 i32) (result i32)
+    local.get 0
+    i32.load
+    local.get 1
+    i32.load
+    i32.sub)
+  (func (;18;) (type 1) (param i32)
     (local i32 i32)
-
-    (; Normal one page to next within that page ;)
-    i32.const 0x40000 (; destination of data ;)
-    i32.const 1056 (; source of data ;)
-    i32.const 60 (; length to copy ;)
-    memory.copy
-
-    (; One normal page to another between pages ;)
-    i32.const 0x4fff0 (; destination of data ;)
-    i32.const 1056 (; source of data ;)
-    i32.const 60 (; length to copy ;)
-    memory.copy
-    
-    (; One betwen pages to another normal page ;)
-
-    i32.const 0x7ff00 (; destination of data ;)
-    i32.const 0x4fff0 (; source of data ;)
-    i32.const 60 (; length to copy ;)
-    memory.copy
-
-    (; Bringing it forwards ;)
-
-    i32.const 0x4ffe0 (; destination of data ;)
-    i32.const 0x4fff0 (; source of data ;)
-    i32.const 60 (; length to copy ;)
-    memory.copy
-
-    (; Sending it forwards ;)
-
-    i32.const 0x4fff6 (; destination of data ;)
-    i32.const 0x4ffe0 (; source of data ;)
-    i32.const 60 (; length to copy ;)
-    memory.copy
-
-
-
-
-    quitit
-    
     global.get 0
-    i32.const 16
+    i32.const 80
     i32.sub
     local.tee 0
     global.set 0
@@ -193,17 +168,122 @@
     call 1
     local.get 0
     i64.const 317827580147
-    i64.store offset=4 align=4
+    i64.store offset=36 align=4
     local.get 0
-    i32.const 1056
-    i32.store
-    i32.const 1067
+    global.get 1
+    local.tee 1
+    i32.const 32
+    i32.add
+    i32.store offset=32
+    local.get 1
+    i32.const 47
+    i32.add
     local.get 0
+    i32.const 32
+    i32.add
     call 2
+    local.get 0
+    i32.const 72
+    i32.add
+    local.get 1
+    i32.const 96
+    i32.add
+    local.tee 1
+    i32.const 24
+    i32.add
+    i32.load
+    i32.store
+    local.get 0
+    i32.const -64
+    i32.sub
+    local.get 1
+    i32.const 16
+    i32.add
+    i64.load
+    i64.store
+    local.get 0
+    local.get 1
+    i32.const 8
+    i32.add
+    i64.load
+    i64.store offset=56
+    local.get 0
+    local.get 1
+    i64.load
+    i64.store offset=48
+    i32.const 0
+    local.set 1
+    loop  ;; label = @1
+      local.get 0
+      local.get 0
+      i32.const 48
+      i32.add
+      local.tee 2
+      local.get 1
+      i32.add
+      i32.load
+      i32.store offset=16
+      global.get 1
+      i32.const 43
+      i32.add
+      local.get 0
+      i32.const 16
+      i32.add
+      call 2
+      local.get 1
+      i32.const 4
+      i32.add
+      local.tee 1
+      i32.const 28
+      i32.ne
+      br_if 0 (;@1;)
+    end
+    i32.const 0
+    local.set 1
+    global.get 1
+    i32.const 90
+    i32.add
+    i32.const 0
+    call 2
+    local.get 2
+    i32.const 7
+    i32.const 4
+    global.get 2
     call 3
+    loop  ;; label = @1
+      local.get 0
+      local.get 0
+      i32.const 48
+      i32.add
+      local.get 1
+      i32.add
+      i32.load
+      i32.store
+      global.get 1
+      i32.const 43
+      i32.add
+      local.get 0
+      call 2
+      local.get 1
+      i32.const 4
+      i32.add
+      local.tee 1
+      i32.const 28
+      i32.ne
+      br_if 0 (;@1;)
+    end
+    i32.const 0
+    local.set 1
+    global.get 1
+    i32.const 90
+    i32.add
+    i32.const 0
+    call 2
+    call 4
     i32.eqz
     if  ;; label = @1
       loop  ;; label = @2
+        global.get 1
         local.get 1
         i32.const 100
         i32.div_u
@@ -211,60 +291,36 @@
         i32.and
         i32.const 2
         i32.shl
-        i32.load offset=1024
-        call 4
+        i32.add
+        i32.load
         call 5
-        i32.const 10
-        i32.const 10
         call 6
+        i32.const 10
+        i32.const 10
+        call 7
         local.get 1
         i32.const 1
         i32.add
         local.set 1
-        call 7
-        call 3
+        call 8
+        call 4
         i32.eqz
         br_if 0 (;@2;)
       end
     end
     i32.const -16711936
-    call 8
+    call 9
     local.get 0
-    i32.const 16
+    i32.const 80
     i32.add
     global.set 0)
-  (global (;0;) (mut i32) (i32.const 66688))
-  (global (;1;) i32 (i32.const 1120))
-  (global (;2;) i32 (i32.const 1024))
-  (global (;3;) i32 (i32.const 1140))
-  (global (;4;) i32 (i32.const 1152))
-  (global (;5;) i32 (i32.const 66688))
-  (global (;6;) i32 (i32.const 1024))
-  (global (;7;) i32 (i32.const 66688))
-  (global (;8;) i32 (i32.const 131072))
-  (global (;9;) i32 (i32.const 0))
-  (global (;10;) i32 (i32.const 1))
-  (global (;11;) i32 (i32.const 65536))
-  (export "__wasm_call_ctors" (func 9))
-  (export "__stack_pointer" (global 0))
   (export "add" (func 10))
   (export "sub" (func 11))
-  (export "v" (global 1))
   (export "abs_diff" (func 12))
   (export "pick_branch" (func 13))
   (export "fibo" (func 14))
   (export "fibo_rec" (func 15))
   (export "print_sum" (func 16))
-  (export "run_raylib" (func 17))
-  (export "__dso_handle" (global 2))
-  (export "__data_end" (global 3))
-  (export "__stack_low" (global 4))
-  (export "__stack_high" (global 5))
-  (export "__global_base" (global 6))
-  (export "__heap_base" (global 7))
-  (export "__heap_end" (global 8))
-  (export "__memory_base" (global 9))
-  (export "__table_base" (global 10))
-  (export "__wasm_first_page_end" (global 11))
-  (data (;0;) (i32.const 1024) "\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\00\00\ff\ff\00\ff\00\ff\ff\00\00\ff\00\00\00\ff<printing>\00Hello, beginning the %s operation now %d %d\0a\00")
-  (data (;1;) (i32.const 1120) "'\22\00\002\00\00\003\00\00\004\00\00\005\00\00\00"))
+  (export "run_raylib" (func 18))
+  (elem (;0;) (global.get 2) func 17)
+  (data (;0;) (global.get 1) "\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\ff\ff\ff\00\ff\00\00\ff\ff\00\ff\00\ff\ff\00\00\ff\00\00\00\ff<printing>\00%d \00Hello, beginning the %s operation now %d %d\0a\00\00\00\00\00(\00\00\00\1e\00\00\00\14\00\00\00\0a\00\00\00\0f\00\00\00\0c\00\00\00\10\00\00\00\00\00\00\00'\22\00\002\00\00\003\00\00\004\00\00\005\00\00\00"))
