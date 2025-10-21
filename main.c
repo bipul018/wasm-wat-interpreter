@@ -8,6 +8,17 @@
 #define slice_last(slice) slice_inx((slice), ((slice).count-1))
 #define slice_first(slice) slice_inx((slice), 0)
 
+// A flag to indicate if no extra stdout is to be printed
+bool to_print = false;
+
+// Helper macro
+#define printfopt(...)				\
+  do{						\
+    if(to_print){				\
+      printf(__VA_ARGS__);			\
+    }						\
+  }while(0)
+
 
 DEF_SLICE(u8);
 DEF_DARRAY(u8, 8);
@@ -119,19 +130,19 @@ int main(void){
   // }
 
   if(parse_brackets(&parser)){
-    printf("Yes, we could parse %s into a parse tree!!!\n", parser.fname);
+    printfopt("Yes, we could parse %s into a parse tree!!!\n", parser.fname);
   } else {
-    printf("Oh no! we could not parse %s\n", parser.fname);
+    fprintf(stderr, "Oh no! we could not parse %s\n", parser.fname);
     return 1;
   }
 
   //for_each_parse_node_df(node, parser.root){
-  //  printf("Node %p = %.*s, children = %zu\n", node, str_print(node->data), node->children.count);
+  //printfopt("Node %p = %.*s, children = %zu\n", node, str_print(node->data), node->children.count);
   //}
 
   Module main_module = {0}; // TODO:: itsy bitsy memory leak
   if(!parse_module(allocr, parser.root, &main_module)){
-    printf("Couldnt parse the main module!!!\n");
+    fprintf(stderr, "Couldnt parse the main module!!!\n");
     return 1;
   }
   //try_printing_module(&main_module);

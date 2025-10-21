@@ -64,7 +64,8 @@ bool parse_import(Alloc_Interface allocr, Parse_Node* root, Import* impt){
   {
     Parse_Node* dets = slice_first(children);
     if(dets->children.count != 1) {
-      fprintf(stderr, "Expected a single child, found %zu\n", dets->children.count);
+      // TODO:: Not make this a error later someday
+      printfopt("Expected a single child, found %zu\n", dets->children.count);
       goto was_error;
     }
     impt->import_type_name = dets->data;

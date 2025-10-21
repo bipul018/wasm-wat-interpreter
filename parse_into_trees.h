@@ -21,10 +21,10 @@ Parse_Info init_parse_info(Alloc_Interface allocr, Cstr filename){
     parser.fname = fname;
   }
   parser.file = read_entire_file(parser.allocr, parser.fname);
-  printf("After reading file %s, found size : %zu\n",
+  printfopt("After reading file %s, found size : %zu\n",
 	 parser.fname, parser.file.count);
   parser.line_nums = parse_lines(parser.allocr, parser.file);
-  printf("Number of lines in the file %s is %zu",
+  printfopt("Number of lines in the file %s is %zu\n",
 	 parser.fname, parser.line_nums.count);
   return parser;
 }

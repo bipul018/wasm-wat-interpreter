@@ -124,7 +124,7 @@ bool load_data_to_memory(Memory_Region* mem, Wasm_Data_Slice globals, const Data
   if(!memory_rgn_write(mem, off, data_sec->raw_bytes.count, data_sec->raw_bytes.data)){
     return false;
   }
-  printf("... Initialized data section at offset %u with length %u\n",
+  printfopt("... Initialized data section at offset %u with length %u\n",
 	 (unsigned)off, (unsigned)data_sec->raw_bytes.count);
   return true;
 }
@@ -325,7 +325,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
 
   // Initialize the data segments
   for_slice(mod->data_sections, i){
-    printf("Initializing the memory with data section %zu...\n", i);
+    printfopt("Initializing the memory with data section %zu...\n", i);
     if(!load_data_to_memory(&cxt.mem, cxt.globals, mod->data_sections.data+i)){
       printf("   ... Loading data section at %zu failed!!!\n", i);
     }
@@ -422,7 +422,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
 	// TODO:: Signal error here somehow
 	assert(false);
       }
-      printf(".... Filled function %lu at function table index %lu\n",
+      printfopt(".... Filled function %lu at function table index %lu\n",
 	     (unsigned long)finx, (unsigned long)(cxt.fxn_table.count -1));
       
     }
@@ -443,7 +443,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
 	  fprintf(stderr, "Failed to get fxn %zu for `start`\n", (size_t)finx);
 	  continue;
 	}
-	printf("Running start function at %zu....\n", finx);
+	printfopt("Running start function at %zu....\n", finx);
 	//const bool prev_trace = cxt.trace;
 	//const bool prev_trace_vars = cxt.trace_vars;
 	//const bool prev_trace_mem = cxt.trace_mem;
@@ -455,7 +455,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
 	if(cycles == 0){
 	  printf("Sus..., cycles = 0 found when running start function\n");
 	}
-	printf(".... Finished function at %zu\n", finx);
+	printfopt(".... Finished function at %zu\n", finx);
       }
     }
   }
@@ -463,7 +463,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
   // If available, also run the exports for ctors, reloc, initialize
   s32 reloc_fn = mod_find_export(mod, "__wasm_apply_data_relocs", FUNCTION_EXPORT_TYPE);
   if(reloc_fn >= 0){
-    printf("Running __wasm_apply_data_relocs function at %d....\n", reloc_fn);
+    printfopt("Running __wasm_apply_data_relocs function at %d....\n", reloc_fn);
     //const bool prev_trace = cxt.trace;
     //const bool prev_trace_vars = cxt.trace_vars;
     //const bool prev_trace_mem = cxt.trace_mem;
@@ -472,7 +472,7 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
     //cxt.trace = prev_trace;
     //cxt.trace_vars = prev_trace_vars;
     //cxt.trace_mem = prev_trace_mem;
-    printf(".... Finished function at %d with %zu cycles\n", reloc_fn, (size_t)cycles);
+    printfopt(".... Finished function at %d with %zu cycles\n", reloc_fn, (size_t)cycles);
   }
 
   return cxt;
@@ -1594,7 +1594,8 @@ u64 draw_fps(Alloc_Interface, Exec_Context* cxt, void* data){
 }
 
 #include <stdarg.h>
-// TODO:: Declare this as a printf type fxn
+bool str_builder_append(Str_Builder* out, Cstr fmt, ...)  __attribute__((format(printf, 2, 3)));
+
 bool str_builder_append(Str_Builder* out, Cstr fmt, ...){
   va_list args = {0};
   va_start(args, fmt);
@@ -1643,6 +1644,7 @@ Str print_to_str(Alloc_Interface allocr, Exec_Context* cxt,
     if(ch == 0) break;
     if(ch == '%'){
       fmtinx++; ch = slice_inx(fmtstr, fmtinx);
+      // TODO:: Figure out alignments here later
       if(ch == 'd'){
 	s32 v;
 	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(s32), &v)){
@@ -1717,6 +1719,20 @@ Str print_to_str(Alloc_Interface allocr, Exec_Context* cxt,
 	  goto return_from_fxn;
 	}
 	SLICE_FREE(allocr, argstr);
+      } else if(match_str_prefix(str_slice(fmtstr, fmtinx, fmtstr.count-1), ".1f")) {
+	// TODO:: Find a less hacky way
+	fmtinx+=2;
+	// Assume args are converted to f64
+	f64 v;
+	if(!memory_rgn_read(&cxt->mem, argoff, sizeof(v), &v)){
+	  fprintf(stderr, "Couldnt read at %zu\n", (size_t)argoff);
+	  goto return_from_fxn;
+	}
+	argoff+=sizeof(v);
+	if(!str_builder_append(&out, "%.1f", v)){
+	  fprintf(stderr, "Allocation error\n");
+	  goto return_from_fxn;
+	}
       } else if(ch == '%'){
 	if(!str_builder_append(&out, "%%")){
 	  fprintf(stderr, "Allocation error\n");
@@ -2279,7 +2295,7 @@ void run_sample(Alloc_Interface allocr, Module* mod, Str entrypath){
     return;
   }
 
-  printf("It took %zu cycles to complete execution of function %s\n", (size_t)cycles, fxn);
+  printfopt("It took %zu cycles to complete execution of function %s\n", (size_t)cycles, fxn);
   // TODO:: Also print the initial arguments and the final state
   deinit_exec_context(allocr, &exec_cxt);
 }
