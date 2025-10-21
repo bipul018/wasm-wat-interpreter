@@ -101,8 +101,8 @@ int main(void){
   Alloc_Interface allocr = gen_std_allocator();
   //parse_node_iter_run_demo(allocr);
 
-  Cstr watfname = "hello.wat";
-  //Cstr watfname = "1brc/1brc.wat";
+  //Cstr watfname = "hello.wat";
+  Cstr watfname = "1brc/1brc.wat";
   Parse_Info parser = init_parse_info(allocr, watfname);
 
   // printf("Printing the file by lines: \n");

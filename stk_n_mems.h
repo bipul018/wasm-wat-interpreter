@@ -187,13 +187,18 @@ size_t memory_rgn_strlen(Memory_Region* mem, const size_t off){
   size_t poff = off - pinx * MEMORY_PAGE_SIZE;
   while(true){
     Memory_Page* page = memory_rgn_get_page(mem, pinx);
-    if(!page) break; // maybe error?
+    if(!page) {
+      fprintf(stderr, "Couldnt read memory page indexed %zu during strdup\n", pinx);
+      break; // maybe error?
+    }
     size_t page_slen = strnlen(page->data+poff, MEMORY_PAGE_SIZE-poff);
     len += page_slen;
-    if(page_slen < MEMORY_PAGE_SIZE-poff) break;
+    
+    if(page->data[poff+page_slen] == 0) break;
+    //if(page_slen < MEMORY_PAGE_SIZE-poff) break;
 
     pinx++;
-    poff=pinx*MEMORY_PAGE_SIZE;
+    poff=0;
   }
   return len;
 }
