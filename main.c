@@ -8,6 +8,32 @@
 #define slice_last(slice) slice_inx((slice), ((slice).count-1))
 #define slice_first(slice) slice_inx((slice), 0)
 
+// A macro to 'profile' a fxn usage
+#define PROFILE_EXPR(name, ...)						\
+  do{									\
+    timespec name##_profile_timer = start_process_timer();		\
+    {__VA_ARGS__;}							\
+    timespec name##_profile_timer_delta =				\
+      end_process_timer(&name##_profile_timer);				\
+    profile_sum_for_##name += timer_sec(name##_profile_timer_delta);	\
+    profile_invocations_for_##name++;					\
+    get_moving_avg_faster(profile_array_for_##name,			\
+			  &profile_array_inx_for_##name,		\
+			  profile_array_len_for_##name,			\
+			  timer_sec(name##_profile_timer_delta),	\
+			  &profile_avg_for_##name);			\
+  }while(0)
+
+#define DECLARE_PROFILING(name, window)			\
+  double profile_sum_for_##name = 0;			\
+  double profile_array_for_##name[window] = {0};	\
+  int profile_array_inx_for_##name = 0;			\
+  const size_t profile_array_len_for_##name = window;	\
+  double profile_avg_for_##name = 0;			\
+  u64 profile_invocations_for_##name = 0;		
+
+
+
 // A flag to indicate if no extra stdout is to be printed
 bool to_print = false;
 
@@ -109,6 +135,8 @@ DEF_SLICE(s32);
 #include "runner.h"
 
 int main(void){
+  timespec time_whole = start_process_timer();
+
   Alloc_Interface allocr = gen_std_allocator();
   //parse_node_iter_run_demo(allocr);
 
@@ -149,11 +177,23 @@ int main(void){
 
   //run_memory_page_sample(allocr);
 
+  // Measure the time taken
+  timespec time_run = start_process_timer();
   run_sample(allocr, &main_module, cstr_to_str(watfname));
-
-  
-
+  printf("Interpretation of program took %lf s to run \n", timer_sec(end_process_timer(&time_run)));
   free_parse_info(&parser);
+
+  printf("The whole program took %lf s to run \n", timer_sec(end_process_timer(&time_whole)));
+
+
+  printf("Profiling results for 'parsing_brackets': \n");
+  printf("    Total time spent : %lf\n", profile_sum_for_parsing_brackets);
+  printf("    Absolute average : %lf\n", 
+	 profile_sum_for_parsing_brackets/profile_invocations_for_parsing_brackets);
+  printf("    Moving average with window %zu : %lf\n",
+	 profile_array_len_for_parsing_brackets, profile_avg_for_parsing_brackets);
+
+
   return 0;
 }
 
