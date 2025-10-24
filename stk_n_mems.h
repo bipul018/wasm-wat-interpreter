@@ -75,19 +75,24 @@ UTILAPI bool resize_u64_darray(u64_Darray* arr, size_t new_count){
   //return res;
 }
 UTILAPI bool push_u64_darray(u64_Darray* arr, u64 val){
+
   size_t new_capacity = arr->capacity;
   if((arr->count+1) > arr->capacity){
     new_capacity *= 2; // Since only 1 item is pushed at a time, this is okay
-    new_capacity = _max(new_capacity, 128);
+    new_capacity = _max(new_capacity, 256);
   }
 
-  void* newptr = alloc_mem(arr->allocr, new_capacity, alignof(u64));
-  if(!newptr) return false;
-  memcpy(newptr, arr->data, sizeof(arr->data[0]) * arr->count);
-  free_mem(arr->allocr, arr->data);
-  arr->data = (u64*)newptr;
+  if(new_capacity != arr->capacity){
+    void* newptr = alloc_mem(arr->allocr, new_capacity, alignof(u64));
+    if(!newptr) return false;
+    if(arr->data){
+      memcpy(newptr, arr->data, sizeof(arr->data[0]) * arr->count);
+      free_mem(arr->allocr, arr->data);
+    }
+    arr->data = (u64*)newptr;
+    arr->capacity = new_capacity;
+  }
   arr->count++;
-  arr->capacity = new_capacity;
   //bool res = resize_u64_darray(arr, arr->count + 1);
   //if(res){
   arr->data[arr->count -1] = val;
@@ -97,9 +102,13 @@ UTILAPI bool push_u64_darray(u64_Darray* arr, u64 val){
 UTILAPI bool pop_u64_darray(u64_Darray* arr, size_t count){
   if(count > arr->count) return false;
   size_t new_capacity = arr->capacity;
-  while((new_capacity/2) > 128 &&
-	(new_capacity / 4) > (arr->count - count)) new_capacity /= 2;
   arr->count = arr->count - count;
+  return true; 
+  if(new_capacity > 256 ||
+     (new_capacity * 4 > arr->count && new_capacity * 8 <= arr->count)) return true;
+  while((new_capacity/2) > 256 &&
+	(new_capacity / 8) > arr->count) new_capacity /= 4;
+
   void* newptr = alloc_mem(arr->allocr, new_capacity, alignof(u64));
   if(!newptr) return true;
   arr->capacity = new_capacity;

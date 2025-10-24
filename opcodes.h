@@ -253,7 +253,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 #define popstk(v)							\
   do{									\
     if(stk->count == 0){							\
-      fprintf(stderr, "Couldnt pop argument, stack underflow\n");	\
+      fprintf(stderr, "Couldnt pop argument, stack underflow : %s:%d\n",__func__, __LINE__); \
       return 0;								\
     }									\
     (v) = slice_last(*stk);						\
