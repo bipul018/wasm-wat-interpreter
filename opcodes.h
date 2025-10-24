@@ -145,22 +145,34 @@ void dump_opcode_counts(Opcode_Count_Darray cntr){
 }
 
 
-
-
+// A cache for find_end_block
+#define FIND_END_BLOCK_CACHE_SIZE 128
+typedef struct Find_End_Block_Cache Find_End_Block_Cache;
+struct Find_End_Block_Cache {
+  u32 inx; // Actually inx+1, using 0 as 'invalid' cache
+  s32 val;
+};
 
 // Operation 1: find matching end block
 //    starting block can be block/loop/if/else
 //    during scan though, only block/loop/if are looked for
 //    end blocks are end/else, so might need to do twice for if/else block pair
 // Returns -1 on failure?
-static s64 find_end_block(Opcode_Slice opcodes, size_t inx){
+static s64 find_end_block(Opcode_Slice opcodes, size_t inx,
+			  Find_End_Block_Cache cache[FIND_END_BLOCK_CACHE_SIZE]){
+
+  Find_End_Block_Cache* cache_entry = &cache[(1+inx) % FIND_END_BLOCK_CACHE_SIZE];
+  if(cache_entry->inx == (1+inx)) return cache_entry->val;
+  cache_entry->inx = 1+inx;
+  cache_entry->val = -1;
+
   s64 cnt = 0;
   Opcode op = slice_inx(opcodes, inx);
   if(op.id != OPCODE_BLOCK &&
      op.id != OPCODE_LOOP &&
      op.id != OPCODE_IF &&
      op.id != OPCODE_ELSE){
-    return -1;
+    goto return_from_fxn;
   }
   cnt++; inx++;
   for(; inx < opcodes.count; inx++){
@@ -175,9 +187,12 @@ static s64 find_end_block(Opcode_Slice opcodes, size_t inx){
     if(cnt == 0) break;
   }
   if(cnt != 0) {
-    return -1;
+    goto return_from_fxn;
   }
-  return inx; // Returns the index of the end block, need to do +1 for continuation
+  
+  cache_entry->val = inx; // Returns the index of the end block, need to do +1 for continuation
+ return_from_fxn:
+  return cache_entry->val;
 }
 // A function to help handle block stack and its items
 u64 visit_new_blk(u64_Darray* stk, size_t opn, u16 paramn, u16 retn){
@@ -297,6 +312,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       printf("\n");
     }
   }
+
+  // Cache for the labels
+  Find_End_Block_Cache blk_end_cache[FIND_END_BLOCK_CACHE_SIZE] = {0};
 
   // TODO:: Care about the result ?
   // Go through the opcodes?
@@ -675,7 +693,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
     } else if(op.id == OPCODE_BLOCK){
       //} else if (str_cmp(op.name, "block") == 0){
       // TODO:: It seems that it also takes in 'blocktype' as another argument
-      s64 end = find_end_block(opcodes, i);
+      s64 end = find_end_block(opcodes, i, blk_end_cache);
       if(end < 0){
 	fprintf(stderr, "Unmatched block found for opcode %zu\n", i);
 	return 0;
@@ -739,7 +757,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 
 
       // Find the end of the block first
-      const s64 end1 = find_end_block(opcodes, i);
+      const s64 end1 = find_end_block(opcodes, i, blk_end_cache);
       if(end1 < 0){
 	fprintf(stderr, "Unmatched block found for opcode(1) %zu(%.*s)\n",
 		i, str_print(slice_inx(opcodes, i).name));
@@ -752,7 +770,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       s64 end2 = end1;
       //if(str_cmp(slice_inx(opcodes, end1).name, "else") == 0){
       if(slice_inx(opcodes, end1).id == OPCODE_ELSE){
-	end2 = find_end_block(opcodes, end1);
+	end2 = find_end_block(opcodes, end1, blk_end_cache);
 	if(end2 < 0){
 	  fprintf(stderr, "Unmatched block found for opcode(2) %zu(%.*s)\n",
 		  end1, str_print(slice_inx(opcodes, i).name));
