@@ -29,24 +29,24 @@ typedef const char* Cstr;
 typedef u8_Darray Str_Builder;
 DEF_SLICE(Str);
 DEF_DARRAY(Str, 8);
-Str str_slice(Str str, size_t begin, size_t end){
+static inline Str str_slice(Str str, size_t begin, size_t end){
 //PROFILABLE_FXN(Str, str_slice, (Str, str), (size_t, begin), (size_t, end)){
   if(nullptr == str.data || begin >= end || end > str.count) return (Str){ 0 };
   return (Str){ .data = str.data + begin, .count = end - begin };
 }
-Str cstr_to_str(Cstr str){
+static inline Str cstr_to_str(const Cstr str){
   return (Str){.data = (void*)str, .count = strlen(str)};
 }
-int str_str_cmp(Str str1, Str str2){
+static inline int str_str_cmp(Str str1, Str str2){
   const size_t l = _min(str1.count, str2.count);
   int v = strncmp(str1.data, str2.data, l);
   if(v != 0) return v;
   return (int)(str1.count - l) - (int)(str2.count - l);
 }
 #define DEF_STR_CSTR_FXN(base_fxn, ret_type)		\
-  ret_type base_fxn##_c_c(Cstr a, Cstr b){return base_fxn(cstr_to_str(a), cstr_to_str(b));}\
-  ret_type base_fxn##_s_c(Str a, Cstr b){return base_fxn(a, cstr_to_str(b));}	\
-  ret_type base_fxn##_c_s(Cstr a, Str b){return base_fxn(cstr_to_str(a), b);} 
+  static inline ret_type base_fxn##_c_c(Cstr a, Cstr b){return base_fxn(cstr_to_str(a), cstr_to_str(b));} \
+  static inline ret_type base_fxn##_s_c(Str a, Cstr b){return base_fxn(a, cstr_to_str(b));} \
+  static inline ret_type base_fxn##_c_s(Cstr a, Str b){return base_fxn(cstr_to_str(a), b);} 
 
 #define DEF_STR_CSTR_GEN(base_fxn, arg1, arg2)	\
   (_Generic((arg1),							\

@@ -34,7 +34,8 @@
   X(OPCODE_I32_STORE, "i32.store")			\
   X(OPCODE_F64_DIV, "f64.div")				\
   X(OPCODE_SELECT, "select")				\
-  X(OPCODE_F64_NEG, "f64.neg")				
+  X(OPCODE_F64_NEG, "f64.neg")				\
+  X(OPCODE_BR, "br")
   
 
 #define OPCODE_GET_ENUM(a, b) a, 
@@ -400,8 +401,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 
     
     const Opcode op = slice_inx(opcodes, i);
-    add_opcode_count(&opcode_cntr, op);
-    if(str_cmp(op.name, "local.get") == 0){
+    //add_opcode_count(&opcode_cntr, op);
+    //if(str_cmp(op.name, "local.get") == 0){
+    if (op.id == OPCODE_LOCAL_GET){
       // TODO:: Find if there is some better way of validating types
       i++; // maybe verify that its not ended yet ??
       u64 inx;
@@ -420,7 +422,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       }
       // Arguments are validated already
       pushstk(slice_inx(vars, inx).du64);
-    } else if (str_cmp(op.name, "local.tee") == 0){
+    } else if (op.id == OPCODE_LOCAL_TEE){
+      //} else if (str_cmp(op.name, "local.tee") == 0){
       // TODO:: Find if theres some better way of validating types
       i++; // maybe verify that its not ended yet ??
       u64 inx;
@@ -440,7 +443,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       // Arguments are validated already
       // Get the value from stack without popping and push it
       slice_inx(vars,inx).du64 = slice_last(*stk); // TODO:: Maybe implement actual local variable
-    } else if (str_cmp(op.name, "local.set") == 0){
+    } else if (op.id == OPCODE_LOCAL_SET){
+      //} else if (str_cmp(op.name, "local.set") == 0){
       // TODO:: Find if theres some better way of validating types
       i++; // maybe verify that its not ended yet ??
       u64 inx;
@@ -500,7 +504,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       // Arguments are validated already
       // Get the value from stack and then pop it
       popstk(slice_inx(cxt->globals,inx).du64);
-    } else if (str_cmp(op.name, "i32.const") == 0){
+    //} else if (str_cmp(op.name, "i32.const") == 0){
+    } else if (op.id == OPCODE_I32_CONST){    
       i++; // maybe verify that its not ended yet ??
       s64 v;
       if(!parse_as_s64(slice_inx(opcodes, i).name, &v)){
@@ -524,7 +529,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       Wasm_Data p = {0};
       p.di64 = v;
       pushstk(p.du64);
-    } else if (str_cmp(op.name, "f64.const") == 0){
+    } else if(op.id == OPCODE_F64_CONST){
+      //} else if (str_cmp(op.name, "f64.const") == 0){
       i++; // maybe verify that its not ended yet ??
       f64 v;
       if(!parse_as_f64(slice_inx(opcodes, i).name, &v)){
@@ -652,7 +658,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 	return 0;
       }
       SLICE_FREE(allocr, tmp_buff);
-    } else if (str_cmp(op.name, "f64.convert_i32_s") == 0){
+    } else if(op.id == OPCODE_F64_CONVERT_I32_S){
+      //} else if (str_cmp(op.name, "f64.convert_i32_s") == 0){
       Wasm_Data p0 = {0}, r = {0};
       popstk(p0.du64);
       r.df64 = p0.di32;
@@ -668,7 +675,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 + p0.di32;
       pushstk(r.du64);
-    } else if (str_cmp(op.name, "f64.add") == 0){
+    } else if(op.id == OPCODE_F64_ADD){
+      //} else if (str_cmp(op.name, "f64.add") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
       r.df64 = p1.df64 + p0.df64;
@@ -678,7 +686,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       popstk(p0.du64);
       r.df64 = -p0.df64;
       pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.shl") == 0){
+    } else if(op.id == OPCODE_I32_SHL){
+      //} else if (str_cmp(op.name, "i32.shl") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 << p0.di32; // TODO:: Find out if the expected behavior matches
@@ -693,7 +702,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 ^ p0.di32; // TODO:: Find out if the expected behavior matches
       pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.mul") == 0){
+    } else if(op.id == OPCODE_I32_MUL){
+    //} else if (str_cmp(op.name, "i32.mul") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 * p0.di32;
@@ -753,7 +763,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       // TODO:: Need to ensure that this is alright
       r.di32 = (s32)((u32)p1.di32 < (u32)p0.di32);
       pushstk(r.du64);
-    } else if (str_cmp(op.name, "f64.lt") == 0){
+    } else if(op.id == OPCODE_F64_LT){
+      //} else if (str_cmp(op.name, "f64.lt") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.df64 < p0.df64;
@@ -769,12 +780,14 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       // TODO:: Need to ensure that this is alright
       r.di32 = (s32)((u32)p1.di32 <= (u32)p0.di32);
       pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.ne") == 0){
+    } else if(op.id == OPCODE_I32_NE){
+      //} else if (str_cmp(op.name, "i32.ne") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 != p0.di32;
       pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.eq") == 0){
+    } else if(op.id == OPCODE_I32_EQ){
+      //} else if (str_cmp(op.name, "i32.eq") == 0){
       Wasm_Data p0 = {0}, p1 = {0}, r = {0};
       popstk(p0.du64); popstk(p1.du64);
       r.di32 = p1.di32 == p0.di32;
@@ -900,9 +913,11 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 
       // Test against various br types
       bool to_jmp = 0;
-      if (str_cmp(op.name, "br") == 0){
+      if (op.id == OPCODE_BR){
+	//if (str_cmp(op.name, "br") == 0){
 	to_jmp = true;
-      } else if(str_cmp(op.name, "br_if")==0){
+      } else if (op.id == OPCODE_BR_IF){
+	//} else if(str_cmp(op.name, "br_if")==0){
 	Wasm_Data comp;
 	popstk(comp.du64);
 	if(comp.di32!=0) to_jmp=true;
@@ -934,9 +949,10 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 	}
 
 	// TODO:: See if break operations can be done by other instruction types
-	const Str label_op = slice_inx(opcodes, i).name;
+	const Opcode label_op = slice_inx(opcodes, i);
 	// For 'loop' type blocks, you need to re-push the loop index
-	if(str_cmp(label_op, "loop") == 0){
+	if (label_op.id == OPCODE_LOOP){
+	  //if(str_cmp(label_op, "loop") == 0){
 	  // TODO:: Figure out how the parameters work here with loops
 	  u64 pcnt = 0;
 	  u64 retcnt = 0;
