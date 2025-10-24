@@ -3,37 +3,58 @@
 // The same reason (also lazy) is why no extra includes are done here
 // #pragma once
 
+#define OPCODE_LIST(X)				\
+  X(OPCODE_I32_ADD	,"i32.add"	)	\
+    X(OPCODE_I32_CONST	,"i32.const"	)	\
+    X(OPCODE_LOCAL_GET	,"local.get"	)	\
+    X(OPCODE_LOCAL_TEE	,"local.tee"	)	\
+    X(OPCODE_LOCAL_SET	,"local.set"	)	\
+    X(OPCODE_END	,"end"		)	\
+    X(OPCODE_BLOCK	,"block"	)	\
+    X(OPCODE_LOOP	,"loop"		)	\
+    X(OPCODE_IF		,"if"		)	\
+    X(OPCODE_ELSE	,"else"		)	\
+    X(OPCODE_BR_IF      ,"br_if"        )	\
+    X(OPCODE_I32_LOAD8_U,"i32.load8_u"  )	\
+    X(OPCODE_I32_NE     ,"i32.ne"       )	\
+    X(OPCODE_I32_MUL    ,"i32.mul"      )	\
+    X(OPCODE_I32_EQ     ,"i32.eq"       )		\
+    X(OPCODE_I32_LOAD8_S,"i32.load8_s"  )		\
+  X(OPCODE_F64_ADD    ,"f64.add"      )			\
+  X(OPCODE_F64_LOAD   ,"f64.load"     )			\
+  X(OPCODE_I32_SHL    ,"i32.shl"      )			\
+  X(OPCODE_I32_LOAD    ,"i32.load"      )		\
+  X(OPCODE_F64_CONVERT_I32_S, "f64.convert_i32_s")	\
+  X(OPCODE_F64_CONST, "f64.const")			\
+  X(OPCODE_F64_LT, "f64.lt")				\
+  X(OPCODE_CALL, "call")				\
+  X(OPCODE_F64_STORE, "f64.store")			\
+  X(OPCODE_GLOBAL_GET, "global.get")			\
+  X(OPCODE_I32_AND, "i32.and")				\
+  X(OPCODE_I32_STORE, "i32.store")			\
+  X(OPCODE_F64_DIV, "f64.div")				\
+  X(OPCODE_SELECT, "select")				\
+  X(OPCODE_F64_NEG, "f64.neg")				
+  
+
+#define OPCODE_GET_ENUM(a, b) a, 
 
 typedef struct Opcode Opcode;
 struct Opcode {
   enum{
     OPCODE_UNKNOWN,// To be used for all the unknown opcodes/literals
-    OPCODE_I32_ADD,
-    OPCODE_I32_CONST,
-    OPCODE_LOCAL_GET,
-    OPCODE_LOCAL_TEE,
-    OPCODE_END,
-    OPCODE_BLOCK,
-    OPCODE_LOOP,
-    OPCODE_IF,
-    OPCODE_ELSE,
+    OPCODE_LIST(OPCODE_GET_ENUM) OPCODES_COUNT
   } id;
   Str name;
 };
 DEF_SLICE(Opcode);
 
 
+
+#define OPCODE_GET_ARRAY_ENTRY(a, b) {.id = a, .name=cstr_to_str(b)},
 Opcode_Slice pre_process_opcodes(Alloc_Interface allocr, Str_Slice raw_opcodes){
-  const Opcode opcode_name_maps[] = {
-    {.id=OPCODE_I32_ADD,  .name=cstr_to_str("i32.add")    },
-    {.id=OPCODE_LOCAL_GET,  .name=cstr_to_str("local.get")    },
-    {.id=OPCODE_LOCAL_TEE,  .name=cstr_to_str("local.tee")    },
-    {.id=OPCODE_I32_CONST,  .name=cstr_to_str("i32.const")    },
-    {.id=OPCODE_END,      .name=cstr_to_str("end")        },
-    {.id=OPCODE_BLOCK,    .name=cstr_to_str("block")      },
-    {.id=OPCODE_LOOP,     .name=cstr_to_str("loop")       },
-    {.id=OPCODE_IF,       .name=cstr_to_str("if")         },
-    {.id=OPCODE_ELSE,     .name=cstr_to_str("else")       },
+  const Opcode opcode_name_maps[OPCODES_COUNT] = {
+    OPCODE_LIST(OPCODE_GET_ARRAY_ENTRY)
   };
 
   Opcode_Slice opcodes = SLICE_ALLOC(allocr, Opcode, raw_opcodes.count);
@@ -66,11 +87,35 @@ struct Opcode_Count {
 };
 DEF_DARRAY(Opcode_Count, 100);
 
+Opcode_Count_Darray init_opcode_counter(Alloc_Interface allocr){
+  const Opcode opcode_name_maps[OPCODES_COUNT] = {
+    OPCODE_LIST(OPCODE_GET_ARRAY_ENTRY)
+  };
+
+  Opcode_Count_Darray cntr = {.allocr = allocr};
+  (void)resize_Opcode_Count_darray(&cntr, OPCODES_COUNT);
+  for_range(int, i, 0, _countof(opcode_name_maps)){
+    slice_inx(cntr, opcode_name_maps[i].id) = (Opcode_Count){
+      .op = opcode_name_maps[i],
+      .count = 0,
+    };
+  }
+  slice_inx(cntr, OPCODE_UNKNOWN).op.name = cstr_to_str("unknown");
+  return cntr;
+}
+
+u64 op_with_id = 0;
 void add_opcode_count(Opcode_Count_Darray* cntr, Opcode op){
   assert(cntr);
-  for_slice(*cntr, i){
-    if((op.id != OPCODE_UNKNOWN && op.id == cntr->data[i].op.id) ||
-       (str_cmp(cntr->data[i].op.name, op.name) == 0)){
+  // Here, increment count based on 'id'
+  slice_inx(*cntr, op.id).count++;
+  // If the id was unknown, then only try to find/push it
+  if(op.id != OPCODE_UNKNOWN) {
+    //op_with_id++;
+    return;
+  }
+  for_range(size_t, i, OPCODES_COUNT, cntr->count){
+    if(str_cmp(cntr->data[i].op.name, op.name) == 0){
       cntr->data[i].count++;
       return;
     }
@@ -89,6 +134,7 @@ void dump_opcode_counts(Opcode_Count_Darray cntr){
     printf("%.*s->%d\t\t", str_print(cntr.data[i].op.name), cntr.data[i].count);
   }
   printf("\n----------------------------------\n");
+  printf("******** %zu op with id was found*********\n", (size_t)op_with_id);
 }
 
 

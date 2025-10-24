@@ -153,10 +153,10 @@ int main(void){
   //try_printing_module(&main_module);
 
   //run_memory_page_sample(allocr);
-  opcode_cntr.allocr = allocr;
+  opcode_cntr = init_opcode_counter(allocr);
   // Measure the time taken
   timespec time_run = start_process_timer();
-  for_range(int, i, 0, 1){
+  for_range(int, i, 0, 4){
     run_sample(allocr, &main_module, cstr_to_str(watfname));
   }
   printf("Interpretation of program took %lf s to run \n", timer_sec(end_process_timer(&time_run)));
