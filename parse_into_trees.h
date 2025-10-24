@@ -121,7 +121,8 @@ Str skip_ws_and_comment(Str input){
   }
   return input;
 }
-Parse_Node* parse_brackets_(Parse_Info* parser, Str* curr_file){
+//Parse_Node* parse_brackets_(Parse_Info* parser, Str* curr_file){
+PROFILABLE_FXN(Parse_Node*, parse_brackets_, (Parse_Info*, parser), (Str*, curr_file)){
   // Expect a bracket open, else return false
 
 #define dump_error_and_ret()			\

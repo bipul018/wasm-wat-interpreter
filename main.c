@@ -30,8 +30,8 @@ typedef const char* Cstr;
 typedef u8_Darray Str_Builder;
 DEF_SLICE(Str);
 DEF_DARRAY(Str, 8);
-//Str str_slice(Str str, size_t begin, size_t end){
-PROFILABLE_FXN(Str, str_slice, (Str, str), (size_t, begin), (size_t, end)){
+Str str_slice(Str str, size_t begin, size_t end){
+//PROFILABLE_FXN(Str, str_slice, (Str, str), (size_t, begin), (size_t, end)){
   if(nullptr == str.data || begin >= end || end > str.count) return (Str){ 0 };
   return (Str){ .data = str.data + begin, .count = end - begin };
 }
@@ -161,14 +161,35 @@ int main(void){
   printf("Interpretation of program took %lf s to run \n", timer_sec(end_process_timer(&time_run)));
   free_parse_info(&parser);
 
-  printf("The whole program took %lf s to run \n", timer_sec(end_process_timer(&time_whole)));
+  double prog_time = timer_sec(end_process_timer(&time_whole));
+  printf("The whole program took %lf s to run \n", prog_time);
 
 
-  printf("Profiling results for 'str_slice': \n");
-  printf("    Total time spent: %lf\n", GET_PROFILED_SUM(str_slice));
-  printf("    Total number of invocations: %zu\n", GET_PROFILED_COUNT(str_slice));
-  printf("    Absolute average : %lf\n", 
-  	 GET_PROFILED_SUM(str_slice)/GET_PROFILED_COUNT(str_slice));;
+#define print_profiling_results(item)					\
+  do{									\
+    printf("Profiling results for '"#item"': \n");			\
+    printf("    Total time spent: %lf s\n", GET_PROFILED_SUM(item));	\
+    printf("    Total number of invocations: %zu\n", GET_PROFILED_COUNT(item));	\
+    printf("    Absolute average : %lf\n",				\
+	   GET_PROFILED_SUM(item)/GET_PROFILED_COUNT(item));		\
+    printf("    Percentage involvement: %.2lf %%\n",			\
+	   (GET_PROFILED_SUM(item) * 100.0)/				\
+	   prog_time);					\
+  }while(0);
+
+  print_profiling_results(parse_brackets_);
+  print_profiling_results(print_to_str);
+  print_profiling_results(memory_rgn_read);
+  print_profiling_results(memory_rgn_write);
+  //print_profiling_results(memory_rgn_ensure);
+  print_profiling_results(run_wasm_opcodes);
+  print_profiling_results(exec_wasm_fxn);
+
+  //printf("Profiling results for 'str_slice': \n");
+  //printf("    Total time spent: %lf\n", GET_PROFILED_SUM(str_slice));
+  //printf("    Total number of invocations: %zu\n", GET_PROFILED_COUNT(str_slice));
+  //printf("    Absolute average : %lf\n", 
+  //	 GET_PROFILED_SUM(str_slice)/GET_PROFILED_COUNT(str_slice));;
   
 
   return 0;

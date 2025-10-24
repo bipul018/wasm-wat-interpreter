@@ -124,6 +124,8 @@ bool memory_rgn_iter(Memory_Page_Iter* mem_iter){
 
 // Ensures that the memory range is available
 bool memory_rgn_ensure(Memory_Region* mem, size_t off, size_t size){
+//PROFILABLE_FXN(bool, memory_rgn_ensure, (Memory_Region*, mem),
+//	       (size_t, off), (size_t, size)){
   Memory_Page_Iter iter = memory_rgn_iter_init(off, size);
   while(memory_rgn_iter(&iter)){
     // Search for the page_inx in mem
@@ -149,7 +151,9 @@ bool memory_rgn_ensure(Memory_Region* mem, size_t off, size_t size){
   return true;
 }
 
-bool memory_rgn_read(Memory_Region* mem, size_t off, size_t size, void* out){
+//bool memory_rgn_read(Memory_Region* mem, size_t off, size_t size, void* out){
+PROFILABLE_FXN(bool, memory_rgn_read, (Memory_Region*, mem), (size_t, off),
+	       (size_t, size), (void*, out)){
   // First ensure that those memory region exist
   // TODO:: Assert false or do something else maybe?
   if(!out || !memory_rgn_ensure(mem, off, size)) return false;
@@ -163,7 +167,9 @@ bool memory_rgn_read(Memory_Region* mem, size_t off, size_t size, void* out){
   }
   return true;
 }
-bool memory_rgn_write(Memory_Region* mem, size_t off, size_t size, const void* in){
+//bool memory_rgn_write(Memory_Region* mem, size_t off, size_t size, const void* in){
+PROFILABLE_FXN(bool, memory_rgn_write, (Memory_Region*, mem), (size_t, off),
+	       (size_t, size), (const void*, in)){
   // First ensure that those memory region exist
   // TODO:: Assert false or do something else maybe?
   if(!in || !memory_rgn_ensure(mem, off, size)) return false;

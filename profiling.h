@@ -34,8 +34,8 @@
   
 // TODO:: Figure out how to add attributes
 #define PROFILABLE_FXN_(fxn_ret_kind, ret_type, name, ... /*args*/)	\
-  double name##_fxn_profiled_sum = 0.0;					\
-  u64 name##_fxn_profiled_count = 0;					\
+  static double name##_fxn_profiled_sum = 0.0;					\
+  static u64 name##_fxn_profiled_count = 0;					\
   static ret_type name##_inner(MAKE_FXN_PROTOTYPE_LIST(__VA_ARGS__));	\
   ret_type name(MAKE_FXN_PROTOTYPE_LIST(__VA_ARGS__)){			\
     timespec timer = start_process_timer();				\

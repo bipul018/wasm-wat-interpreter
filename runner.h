@@ -548,8 +548,9 @@ u64 wasm_extern_printhex(Alloc_Interface allocr, Exec_Context* cxt, void* d){
   return 1;
 }
 
-u64 exec_wasm_fxn(Alloc_Interface allocr, Exec_Context* cxt, size_t finx){
-
+//u64 exec_wasm_fxn(Alloc_Interface allocr, Exec_Context* cxt, size_t finx){
+PROFILABLE_FXN(u64, exec_wasm_fxn, (Alloc_Interface, allocr),
+	       (Exec_Context*, cxt), (size_t, finx)){
   // Find if finx exists and extract the data
   if(finx >= cxt->fxns.count){
     fprintf(stderr, "Expected to call %zu-th fxn when only %zu fxns are registered\n",
@@ -716,7 +717,9 @@ size_t break_old_blk(u64_Darray* stk, u64 label){
   
   return opn;
 }
-u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice opcodes, Wasm_Data_Slice vars){
+//u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Str_Slice opcodes, Wasm_Data_Slice vars){
+PROFILABLE_FXN(u64, run_wasm_opcodes, (Alloc_Interface, allocr), (Exec_Context*, cxt),
+	       (const Str_Slice, opcodes), (Wasm_Data_Slice, vars)){
   u64_Darray* stk = &cxt->stk;
   u64_Darray* blk_stk = &cxt->blk_stk;
   Memory_Region* mem = &cxt->mem;
@@ -1625,8 +1628,10 @@ bool str_builder_append(Str_Builder* out, Cstr fmt, ...){
 
 bool printit = false;
 
-Str print_to_str(Alloc_Interface allocr, Exec_Context* cxt,
-		      s32 fmtstr_off, s32 argoff){
+PROFILABLE_FXN(Str, print_to_str, (Alloc_Interface, allocr), (Exec_Context*, cxt),
+	       (s32, fmtstr_off), (s32, argoff)){
+//Str print_to_str(Alloc_Interface allocr, Exec_Context* cxt,
+//		      s32 fmtstr_off, s32 argoff){
   //  Copy the string first
   Str fmtstr = memory_rgn_cstrdup(allocr, &cxt->mem, fmtstr_off);
   if(!fmtstr.data){
