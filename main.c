@@ -8,30 +8,7 @@
 #define slice_last(slice) slice_inx((slice), ((slice).count-1))
 #define slice_first(slice) slice_inx((slice), 0)
 
-// A macro to 'profile' a fxn usage
-#define PROFILE_EXPR(name, ...)						\
-  do{									\
-    timespec name##_profile_timer = start_process_timer();		\
-    {__VA_ARGS__;}							\
-    timespec name##_profile_timer_delta =				\
-      end_process_timer(&name##_profile_timer);				\
-    profile_sum_for_##name += timer_sec(name##_profile_timer_delta);	\
-    profile_invocations_for_##name++;					\
-    get_moving_avg_faster(profile_array_for_##name,			\
-			  &profile_array_inx_for_##name,		\
-			  profile_array_len_for_##name,			\
-			  timer_sec(name##_profile_timer_delta),	\
-			  &profile_avg_for_##name);			\
-  }while(0)
-
-#define DECLARE_PROFILING(name, window)			\
-  double profile_sum_for_##name = 0;			\
-  double profile_array_for_##name[window] = {0};	\
-  int profile_array_inx_for_##name = 0;			\
-  const size_t profile_array_len_for_##name = window;	\
-  double profile_avg_for_##name = 0;			\
-  u64 profile_invocations_for_##name = 0;		
-
+#include "profiling.h"
 
 
 // A flag to indicate if no extra stdout is to be printed
@@ -53,7 +30,8 @@ typedef const char* Cstr;
 typedef u8_Darray Str_Builder;
 DEF_SLICE(Str);
 DEF_DARRAY(Str, 8);
-Str str_slice(Str str, size_t begin, size_t end){
+//Str str_slice(Str str, size_t begin, size_t end){
+PROFILABLE_FXN(Str, str_slice, (Str, str), (size_t, begin), (size_t, end)){
   if(nullptr == str.data || begin >= end || end > str.count) return (Str){ 0 };
   return (Str){ .data = str.data + begin, .count = end - begin };
 }
@@ -186,13 +164,12 @@ int main(void){
   printf("The whole program took %lf s to run \n", timer_sec(end_process_timer(&time_whole)));
 
 
-  printf("Profiling results for 'parsing_brackets': \n");
-  printf("    Total time spent : %lf\n", profile_sum_for_parsing_brackets);
+  printf("Profiling results for 'str_slice': \n");
+  printf("    Total time spent: %lf\n", GET_PROFILED_SUM(str_slice));
+  printf("    Total number of invocations: %zu\n", GET_PROFILED_COUNT(str_slice));
   printf("    Absolute average : %lf\n", 
-	 profile_sum_for_parsing_brackets/profile_invocations_for_parsing_brackets);
-  printf("    Moving average with window %zu : %lf\n",
-	 profile_array_len_for_parsing_brackets, profile_avg_for_parsing_brackets);
-
+  	 GET_PROFILED_SUM(str_slice)/GET_PROFILED_COUNT(str_slice));;
+  
 
   return 0;
 }
