@@ -50,12 +50,20 @@ typedef struct Opcode Opcode;
 struct Opcode {
   enum{
     OPCODE_UNKNOWN,// To be used for all the unknown opcodes/literals
-    OPCODE_LIST(OPCODE_GET_ENUM) OPCODES_COUNT
+    OPCODE_LIST(OPCODE_GET_ENUM) OPCODES_COUNT,
+
+    // A 'hierarchy' of 'immediate operand types'
+    //    compared by 'id' >= 'desired level'
+    OPCODE_IM_IS_F64,
+    OPCODE_IM_IS_S64,
+    OPCODE_IM_IS_U64,
   } id;
   Str name;
+  u64 du64;
+  s64 di64;
+  f64 df64;
 };
 DEF_SLICE(Opcode);
-
 
 
 #define OPCODE_GET_ARRAY_ENTRY(a, b) {.id = a, .name=cstr_to_str(b)},
@@ -77,7 +85,18 @@ Opcode_Slice pre_process_opcodes(Alloc_Interface allocr, Str_Slice raw_opcodes){
 	break;
       }
     }
-    //if(str_cmp(raw_op, "i32.add") == 0) { op.id = OPCODE_I32_ADD; }
+    if(op.id == OPCODE_UNKNOWN){
+      // Try to parse as u64, then as s64
+      if(parse_as_u64(raw_op, &op.du64)){
+	op.id = OPCODE_IM_IS_U64;
+	op.df64 = op.di64 = op.du64;
+      }else if(parse_as_s64(raw_op, &op.di64)){
+	op.id = OPCODE_IM_IS_S64;
+	op.df64 = op.di64;
+      }else if(parse_as_f64(raw_op, &op.df64)){
+	op.id = OPCODE_IM_IS_F64;
+      }
+    }
     slice_inx(opcodes, i) = op;
   }
   //assert(false);
@@ -117,7 +136,7 @@ void add_opcode_count(Opcode_Count_Darray* cntr, Opcode op){
   // Here, increment count based on 'id'
   slice_inx(*cntr, op.id).count++;
   // If the id was unknown, then only try to find/push it
-  if(op.id != OPCODE_UNKNOWN) {
+  if(op.id != OPCODE_UNKNOWN && op.id < OPCODES_COUNT) {
     op_with_id++;
     return;
   }
@@ -430,13 +449,15 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
     if (op.id == OPCODE_LOCAL_GET){
       // TODO:: Find if there is some better way of validating types
       i++; // maybe verify that its not ended yet ??
-      u64 inx;
-      if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      //u64 inx;
+      //if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      if(slice_inx(opcodes, i).id < OPCODE_IM_IS_U64){
 	// TODO:: Also print location of source code
 	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i).name));
 	return 0;
       }
+      u64 inx = slice_inx(opcodes, i).du64;
       // See if the index exists
       if(inx >= vars.count){
 	// TODO:: Also print location of source code
@@ -450,13 +471,14 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       //} else if (str_cmp(op.name, "local.tee") == 0){
       // TODO:: Find if theres some better way of validating types
       i++; // maybe verify that its not ended yet ??
-      u64 inx;
-      if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      //if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      if(slice_inx(opcodes, i).id < OPCODE_IM_IS_U64){
 	// TODO:: Also print location of source code
 	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i).name));
 	return 0;
       }
+      u64 inx = slice_inx(opcodes, i).du64;
       // See if the index exists
       if(inx >= vars.count){
 	// TODO:: Also print location of source code
@@ -471,13 +493,14 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       //} else if (str_cmp(op.name, "local.set") == 0){
       // TODO:: Find if theres some better way of validating types
       i++; // maybe verify that its not ended yet ??
-      u64 inx;
-      if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      //if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      if(slice_inx(opcodes, i).id < OPCODE_IM_IS_U64){
 	// TODO:: Also print location of source code
 	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i).name));
 	return 0;
       }
+      u64 inx = slice_inx(opcodes, i).du64;
       // See if the index exists
       if(inx >= vars.count){
 	// TODO:: Also print location of source code
@@ -492,13 +515,14 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       //} else if(str_cmp(op.name, "global.get") == 0){
       // TODO:: Find if there is some better way of validating types
       i++; // maybe verify that its not ended yet ??
-      u64 inx;
-      if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      //if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      if(slice_inx(opcodes, i).id < OPCODE_IM_IS_U64){
 	// TODO:: Also print location of source code
 	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i).name));
 	return 0;
       }
+      u64 inx = slice_inx(opcodes, i).du64;
       // See if the index exists
       if(inx >= cxt->globals.count){
 	// TODO:: Also print location of source code
@@ -513,13 +537,14 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       //} else if (str_cmp(op.name, "global.set") == 0){
       // TODO:: Find if theres some better way of validating types
       i++; // maybe verify that its not ended yet ??
-      u64 inx;
-      if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      //if(!parse_as_u64(slice_inx(opcodes, i).name, &inx)){
+      if(slice_inx(opcodes, i).id < OPCODE_IM_IS_U64){
 	// TODO:: Also print location of source code
 	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i).name));
 	return 0;
       }
+      u64 inx = slice_inx(opcodes, i).du64;
       // See if the index exists
       if(inx >= cxt->globals.count){
 	// TODO:: Also print location of source code
@@ -533,39 +558,42 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
     //} else if (str_cmp(op.name, "i32.const") == 0){
     } else if (op.id == OPCODE_I32_CONST){
       i++; // maybe verify that its not ended yet ??
-      s64 v;
-      if(!parse_as_s64(slice_inx(opcodes, i).name, &v)){
+      //if(!parse_as_s64(slice_inx(opcodes, i).name, &v)){
+      if(slice_inx(opcodes, i).id < OPCODE_IM_IS_S64){
 	// TODO:: Also print location of source code
 	fprintf(stderr, "Expected %zu-th opcode to be i32 literal, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i).name));
 	return 0;
       }
+      s32 v = slice_inx(opcodes, i).di64;
       Wasm_Data p = {0};
       p.di32 = v;
       pushstk(p.du64);
     } else if(op.id == OPCODE_I64_CONST){
       //} else if (str_cmp(op.name, "i64.const") == 0){
       i++; // maybe verify that its not ended yet ??
-      s64 v;
-      if(!parse_as_s64(slice_inx(opcodes, i).name, &v)){
+      //if(!parse_as_s64(slice_inx(opcodes, i).name, &v)){
+      if(slice_inx(opcodes, i).id < OPCODE_IM_IS_S64){
 	// TODO:: Also print location of source code
 	fprintf(stderr, "Expected %zu-th opcode to be i64 literal, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i).name));
 	return 0;
       }
+      s32 v = slice_inx(opcodes, i).di64;
       Wasm_Data p = {0};
       p.di64 = v;
       pushstk(p.du64);
     } else if(op.id == OPCODE_F64_CONST){
       //} else if (str_cmp(op.name, "f64.const") == 0){
       i++; // maybe verify that its not ended yet ??
-      f64 v;
-      if(!parse_as_f64(slice_inx(opcodes, i).name, &v)){
+      //if(!parse_as_f64(slice_inx(opcodes, i).name, &v)){
+      if(slice_inx(opcodes, i).id < OPCODE_IM_IS_F64){
 	// TODO:: Also print location of source code
 	fprintf(stderr, "Expected %zu-th opcode to be f64 literal, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i).name));
 	return 0;
       }
+      f64 v = slice_inx(opcodes, i).df64;
       Wasm_Data p = {0};
       p.df64 = v;
       pushstk(p.du64);
@@ -818,14 +846,14 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 	// Simply jump to the label, and pop upto before the label
 	// If 'loop' type, also push the label again
 
-	u64 v;
-	if(!parse_as_u64(slice_inx(opcodes, i).name, &v)){
+	//if(!parse_as_u64(slice_inx(opcodes, i).name, &v)){
+	if(slice_inx(opcodes, i).id < OPCODE_IM_IS_U64){
 	  // TODO:: Also print location of source code
 	  fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
 		  i, str_print(slice_inx(opcodes, i).name));
 	  return 0;
 	}
-
+	u64 v = slice_inx(opcodes, i).du64;
 	if(v >= blk_stk->count){
 	  fprintf(stderr, "Expected to break out of %zu-th block, when only %zu are present\n", v+1, blk_stk->count);
 	  return 0;	  
@@ -873,13 +901,14 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       //} else if (str_cmp(op.name, "call") == 0){
       // The next argument is the function index
       i++; // maybe verify that its not ended yet ??
-      u64 finx;
-      if(!parse_as_u64(slice_inx(opcodes, i).name, &finx)){
+      //if(!parse_as_u64(slice_inx(opcodes, i).name, &finx)){
+      if(slice_inx(opcodes, i).id < OPCODE_IM_IS_U64){
 	// TODO:: Also print location of source code
 	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
 		i, str_print(slice_inx(opcodes, i).name));
 	return 0;
       }
+      u64 finx = slice_inx(opcodes, i).du64;
       // Call the function
       const u64 calld_cyc = exec_wasm_fxn(allocr, cxt, finx);
       if(calld_cyc == 0){
