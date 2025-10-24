@@ -8,7 +8,6 @@
 #define slice_last(slice) slice_inx((slice), ((slice).count-1))
 #define slice_first(slice) slice_inx((slice), 0)
 
-#include "profiling.h"
 
 
 // A flag to indicate if no extra stdout is to be printed
@@ -90,6 +89,8 @@ DEF_STR_CSTR_FXN(match_str_suffix_, bool);
 
 #define str_print(str) ((int)(str).count), (str).data
 
+#include "profiling.h"
+
 DEF_SLICE(s32);
 #include "lines_and_files.h"
 #include "parse_node.h"
@@ -152,10 +153,10 @@ int main(void){
   //try_printing_module(&main_module);
 
   //run_memory_page_sample(allocr);
-
+  opcode_cntr.allocr = allocr;
   // Measure the time taken
   timespec time_run = start_process_timer();
-  for_range(int, i, 0, 3){
+  for_range(int, i, 0, 1){
     run_sample(allocr, &main_module, cstr_to_str(watfname));
   }
   printf("Interpretation of program took %lf s to run \n", timer_sec(end_process_timer(&time_run)));
@@ -164,6 +165,7 @@ int main(void){
   double prog_time = timer_milli(end_process_timer(&time_whole));
   printf("The whole program took %lf s to run \n", prog_time/1000.0);
 
+  dump_opcode_counts(opcode_cntr);
 
 #define print_profiling_results(item)					\
   do{									\

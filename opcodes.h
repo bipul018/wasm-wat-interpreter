@@ -9,6 +9,9 @@ struct Opcode {
   enum{
     OPCODE_UNKNOWN,// To be used for all the unknown opcodes/literals
     OPCODE_I32_ADD,
+    OPCODE_I32_CONST,
+    OPCODE_LOCAL_GET,
+    OPCODE_LOCAL_TEE,
     OPCODE_END,
     OPCODE_BLOCK,
     OPCODE_LOOP,
@@ -23,6 +26,9 @@ DEF_SLICE(Opcode);
 Opcode_Slice pre_process_opcodes(Alloc_Interface allocr, Str_Slice raw_opcodes){
   const Opcode opcode_name_maps[] = {
     {.id=OPCODE_I32_ADD,  .name=cstr_to_str("i32.add")    },
+    {.id=OPCODE_LOCAL_GET,  .name=cstr_to_str("local.get")    },
+    {.id=OPCODE_LOCAL_TEE,  .name=cstr_to_str("local.tee")    },
+    {.id=OPCODE_I32_CONST,  .name=cstr_to_str("i32.const")    },
     {.id=OPCODE_END,      .name=cstr_to_str("end")        },
     {.id=OPCODE_BLOCK,    .name=cstr_to_str("block")      },
     {.id=OPCODE_LOOP,     .name=cstr_to_str("loop")       },
@@ -36,10 +42,12 @@ Opcode_Slice pre_process_opcodes(Alloc_Interface allocr, Str_Slice raw_opcodes){
     Str raw_op = slice_inx(raw_opcodes, i);
     Opcode op = {.name=raw_op, .id=OPCODE_UNKNOWN};
     for_range(long, j, 0, _countof(opcode_name_maps)){
+      //printf("Comparing opcode `%.*s` with `%.*s`\n",
+      //str_print(raw_op), str_print(opcode_name_maps[j].name));
       if(str_cmp(raw_op, opcode_name_maps[j].name) == 0){
 	op.id=opcode_name_maps[j].id;
+	break;
       }
-      break;
     }
     //if(str_cmp(raw_op, "i32.add") == 0) { op.id = OPCODE_I32_ADD; }
     slice_inx(opcodes, i) = op;
@@ -47,6 +55,42 @@ Opcode_Slice pre_process_opcodes(Alloc_Interface allocr, Str_Slice raw_opcodes){
   //assert(false);
   return opcodes;
 }
+
+
+// Opcode counter
+
+typedef struct Opcode_Count Opcode_Count;
+struct Opcode_Count {
+  Opcode op;
+  int count;
+};
+DEF_DARRAY(Opcode_Count, 100);
+
+void add_opcode_count(Opcode_Count_Darray* cntr, Opcode op){
+  assert(cntr);
+  for_slice(*cntr, i){
+    if((op.id != OPCODE_UNKNOWN && op.id == cntr->data[i].op.id) ||
+       (str_cmp(cntr->data[i].op.name, op.name) == 0)){
+      cntr->data[i].count++;
+      return;
+    }
+  }
+  (void)push_Opcode_Count_darray(cntr, (Opcode_Count){.op=op, .count=1});
+}
+
+int opcode_count_cmpr(const void* a, const void* b){
+  return ((const Opcode_Count*)b)->count - ((const Opcode_Count*)a)->count;
+}
+void dump_opcode_counts(Opcode_Count_Darray cntr){
+  qsort(cntr.data, cntr.count, sizeof(cntr.data[0]), opcode_count_cmpr);
+  printf("\n------- Opcode call counts -------");
+  for_slice(cntr, i){
+    if((i % 3) == 0) printf("\n");
+    printf("%.*s->%d\t\t", str_print(cntr.data[i].op.name), cntr.data[i].count);
+  }
+  printf("\n----------------------------------\n");
+}
+
 
 
 
@@ -138,6 +182,8 @@ size_t break_old_blk(u64_Darray* stk, u64 label){
   return opn;
 }
 
+Opcode_Count_Darray opcode_cntr;
+
 u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Slice opcodes, Wasm_Data_Slice vars){
 //PROFILABLE_FXN(u64, run_wasm_opcodes, (Alloc_Interface, allocr), (Exec_Context*, cxt),
 //	       (const Str_Slice, opcodes), (Wasm_Data_Slice, vars)){
@@ -202,6 +248,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
   // TODO:: Care about the result ?
   // Go through the opcodes?
   for_slice(opcodes, i){
+
+    //if(str_cmp("if", slice_inx(opcodes, i).name) == 0) cxt->step_into = true;
+    //if(str_cmp("i32.add", slice_inx(opcodes, i).name) == 0) cxt->step_into = true;
 
     // Step into mode, used to examine the opcodes and stuff
     if(cxt->step_into){
@@ -277,7 +326,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 
 	      printf(" <");
 	      for_range(size_t, i, begin, end)
-		printf("%.*s  ", str_print(slice_inx(opcodes, i).name));
+		printf("%.*s(%d)  ", str_print(slice_inx(opcodes, i).name),
+		       (int)slice_inx(opcodes, i).id);
 	      printf(">\n");
 	      break;
 	    }
@@ -304,6 +354,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 
     
     const Opcode op = slice_inx(opcodes, i);
+    add_opcode_count(&opcode_cntr, op);
     if(str_cmp(op.name, "local.get") == 0){
       // TODO:: Find if there is some better way of validating types
       i++; // maybe verify that its not ended yet ??
@@ -736,6 +787,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       if(pcnt) i++; if(retcnt) i++;
       pushblk_stk(visit_new_blk(stk, i, pcnt, retcnt));
     } else if (str_cmp(op.name, "if") == 0){
+      
       // TODO:: It seems that it also takes in 'blocktype' as another argument
       Wasm_Data comp;
       popstk(comp.du64);
