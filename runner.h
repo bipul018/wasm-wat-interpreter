@@ -481,9 +481,12 @@ Exec_Context init_exec_context(Alloc_Interface allocr, const Module* mod){
 void deinit_exec_context(Alloc_Interface allocr, Exec_Context* cxt){
   if(!cxt) return;
   SLICE_FREE(allocr, cxt->fxns);
-  (void)resize_u64_darray(&cxt->fxn_table, 0);
-  (void)resize_u64_darray(&cxt->stk, 0);
-  (void)resize_u64_darray(&cxt->blk_stk, 0);
+  free_mem(cxt->fxn_table.allocr, cxt->fxn_table.data);
+  free_mem(cxt->stk.allocr, cxt->stk.data);
+  free_mem(cxt->blk_stk.allocr, cxt->blk_stk.data);
+  //(void)resize_u64_darray(&cxt->fxn_table, 0);
+  //(void)resize_u64_darray(&cxt->stk, 0);
+  //(void)resize_u64_darray(&cxt->blk_stk, 0);
   memory_rgn_deinit(&cxt->mem);
   (*cxt) = (Exec_Context){0};
 }

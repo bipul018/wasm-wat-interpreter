@@ -4,6 +4,7 @@
 #include <ctype.h>
 
 #define UTIL_INCLUDE_ALL
+#define UTILAPI static inline
 #include "../c-utils/util_headers.h"
 #define slice_last(slice) slice_inx((slice), ((slice).count-1))
 #define slice_first(slice) slice_inx((slice), 0)
@@ -156,16 +157,17 @@ int main(void){
   opcode_cntr = init_opcode_counter(allocr);
   // Measure the time taken
   timespec time_run = start_process_timer();
-  for_range(int, i, 0, 4){
+  const int runs = 4;
+  for_range(int, i, 0, runs){
     run_sample(allocr, &main_module, cstr_to_str(watfname));
   }
-  printf("Interpretation of program took %lf s to run \n", timer_sec(end_process_timer(&time_run)));
+  printf("Interpretation of program with %d runs took %lf s to run \n", runs, timer_sec(end_process_timer(&time_run)));
   free_parse_info(&parser);
 
   double prog_time = timer_milli(end_process_timer(&time_whole));
   printf("The whole program took %lf s to run \n", prog_time/1000.0);
 
-  dump_opcode_counts(opcode_cntr);
+  //dump_opcode_counts(opcode_cntr);
 
 #define print_profiling_results(item)					\
   do{									\

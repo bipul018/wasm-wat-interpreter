@@ -5,7 +5,123 @@
 
 // Nothing is type safe
 DEF_SLICE(u64);
-DEF_DARRAY(u64, 16); // Maybe initialize this according to module parameters later
+//DEF_DARRAY(u64, 128); // Maybe initialize this according to module parameters later
+typedef struct u64_Darray u64_Darray;
+struct u64_Darray {
+  Alloc_Interface allocr;
+  u64* data;
+  size_t count;
+  size_t capacity;
+};
+
+UTILAPI bool resize_u64_darray(u64_Darray* arr, size_t new_count){
+  void* ptr = arr->data;
+  size_t size = arr->count * sizeof(u64);
+  size_t cap = arr->capacity * sizeof(u64);
+  const sptr adj = (sptr)sizeof(u64)*new_count - (sptr)size;
+  
+  if(new_count == arr->count) return true;
+  if(new_count > arr->count){
+    if(new_count <= arr->capacity){
+      arr->count = new_count;
+      return true;
+    }
+  } else if(new_count < arr->count){
+    if(new_count != 0 &&
+       new_count >= arr->capacity/4 &&
+       new_count >= 128){
+      arr->count = new_count;
+      return true;
+    }
+  }
+  if(new_count == 0 && arr->data != nullptr){
+    free_mem(arr->allocr, arr->data);
+    *arr = (u64_Darray){0};
+    return true;
+  }
+  size_t new_capacity = arr->capacity;
+  if(new_count > arr->count){
+    while(1){
+      if((new_capacity) >= new_count) break;
+      new_capacity *= 2;
+    }
+  } else {
+    while(1){
+      if((new_capacity/4) > new_count) break;
+      new_capacity /= 2;
+    }
+  }
+  new_capacity = _max(128, new_capacity);
+  void* newptr = alloc_mem(arr->allocr, new_capacity, alignof(u64));
+  if(newptr == nullptr){
+    if(new_count > arr->count) return false;
+    else return true; // ignore in case of 'pop' like action
+  }
+  memcpy(newptr, arr->data, sizeof(u64)*_min(new_count, arr->count));
+  free_mem(arr->allocr, arr->data);
+  arr->count = new_count;
+  arr->capacity = new_capacity;
+  arr->data = (u64*)newptr;
+  return true;
+
+  //bool res = adjust_darray(arr->allocr, &ptr, &size, &cap,
+  //                         alignof(u64),
+  //                         128 * sizeof(u64), adj);
+  //if(res){
+  //  arr->data = ptr;
+  //  arr->count = size / sizeof(u64);
+  //  arr->capacity = cap / sizeof(u64);
+  //}
+  //return res;
+}
+UTILAPI bool push_u64_darray(u64_Darray* arr, u64 val){
+  size_t new_capacity = arr->capacity;
+  if((arr->count+1) > arr->capacity){
+    new_capacity *= 2; // Since only 1 item is pushed at a time, this is okay
+    new_capacity = _max(new_capacity, 128);
+  }
+
+  void* newptr = alloc_mem(arr->allocr, new_capacity, alignof(u64));
+  if(!newptr) return false;
+  memcpy(newptr, arr->data, sizeof(arr->data[0]) * arr->count);
+  free_mem(arr->allocr, arr->data);
+  arr->data = (u64*)newptr;
+  arr->count++;
+  arr->capacity = new_capacity;
+  //bool res = resize_u64_darray(arr, arr->count + 1);
+  //if(res){
+  arr->data[arr->count -1] = val;
+  //}
+  return true;
+}
+UTILAPI bool pop_u64_darray(u64_Darray* arr, size_t count){
+  if(count > arr->count) return false;
+  size_t new_capacity = arr->capacity;
+  while((new_capacity/2) > 128 &&
+	(new_capacity / 4) > (arr->count - count)) new_capacity /= 2;
+  arr->count = arr->count - count;
+  void* newptr = alloc_mem(arr->allocr, new_capacity, alignof(u64));
+  if(!newptr) return true;
+  arr->capacity = new_capacity;
+  
+  memcpy(newptr, arr->data, sizeof(arr->data[0]) * arr->count);
+  free_mem(arr->allocr, arr->data);
+  arr->data = (u64*)newptr;
+
+  //bool res = resize_u64_darray(arr, arr->count - count);
+  return true;
+}
+UTILAPI bool downsize_u64_darray(u64_Darray* arr, size_t pos, size_t amt){
+  if(pos > arr->count) return false;
+  size_t src_off = pos + amt;
+  if(src_off > arr->count) return false;
+  if(src_off < arr->count)
+    memmove((void*)(arr->data + pos), (void*)(arr->data + src_off),
+            (arr->count-src_off) * sizeof(u64));
+  return pop_u64_darray(arr, amt);
+}
+
+
 // Only prints as u64 array
 void print_stack(u64_Slice stk){
   printf("[ ");

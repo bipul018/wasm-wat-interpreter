@@ -3,21 +3,21 @@
 // The same reason (also lazy) is why no extra includes are done here
 // #pragma once
 
-#define OPCODE_LIST(X)				\
-  X(OPCODE_I32_ADD	,"i32.add"	)	\
-    X(OPCODE_I32_CONST	,"i32.const"	)	\
-    X(OPCODE_LOCAL_GET	,"local.get"	)	\
-    X(OPCODE_LOCAL_TEE	,"local.tee"	)	\
-    X(OPCODE_LOCAL_SET	,"local.set"	)	\
-    X(OPCODE_END	,"end"		)	\
-    X(OPCODE_BLOCK	,"block"	)	\
-    X(OPCODE_LOOP	,"loop"		)	\
-    X(OPCODE_IF		,"if"		)	\
-    X(OPCODE_ELSE	,"else"		)	\
-    X(OPCODE_BR_IF      ,"br_if"        )	\
-    X(OPCODE_I32_LOAD8_U,"i32.load8_u"  )	\
-    X(OPCODE_I32_NE     ,"i32.ne"       )	\
-    X(OPCODE_I32_MUL    ,"i32.mul"      )	\
+#define OPCODE_LIST(X)					\
+  X(OPCODE_I32_ADD	,"i32.add"	)		\
+    X(OPCODE_I32_CONST	,"i32.const"	)		\
+    X(OPCODE_LOCAL_GET	,"local.get"	)		\
+    X(OPCODE_LOCAL_TEE	,"local.tee"	)		\
+    X(OPCODE_LOCAL_SET	,"local.set"	)		\
+    X(OPCODE_END	,"end"		)		\
+    X(OPCODE_BLOCK	,"block"	)		\
+    X(OPCODE_LOOP	,"loop"		)		\
+    X(OPCODE_IF		,"if"		)		\
+    X(OPCODE_ELSE	,"else"		)		\
+    X(OPCODE_BR_IF      ,"br_if"        )		\
+    X(OPCODE_I32_LOAD8_U,"i32.load8_u"  )		\
+    X(OPCODE_I32_NE     ,"i32.ne"       )		\
+    X(OPCODE_I32_MUL    ,"i32.mul"      )		\
     X(OPCODE_I32_EQ     ,"i32.eq"       )		\
     X(OPCODE_I32_LOAD8_S,"i32.load8_s"  )		\
   X(OPCODE_F64_ADD    ,"f64.add"      )			\
@@ -35,7 +35,13 @@
   X(OPCODE_F64_DIV, "f64.div")				\
   X(OPCODE_SELECT, "select")				\
   X(OPCODE_F64_NEG, "f64.neg")				\
-  X(OPCODE_BR, "br")
+  X(OPCODE_BR, "br")					\
+  X(OPCODE_GLOBAL_SET, "global.set")			\
+  X(OPCODE_I64_CONST, "i64.const")			\
+    X(OPCODE_MEMORY_FILL, "memory.fill")		\
+    X(OPCODE_MEMORY_COPY, "memory.copy")		\
+    X(OPCODE_I32_SUB, "i32.sub")			\
+    X(OPCODE_I32_SHR_S, "i32.shr_s")
   
 
 #define OPCODE_GET_ENUM(a, b) a, 
@@ -112,7 +118,7 @@ void add_opcode_count(Opcode_Count_Darray* cntr, Opcode op){
   slice_inx(*cntr, op.id).count++;
   // If the id was unknown, then only try to find/push it
   if(op.id != OPCODE_UNKNOWN) {
-    //op_with_id++;
+    op_with_id++;
     return;
   }
   for_range(size_t, i, OPCODES_COUNT, cntr->count){
@@ -464,7 +470,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       // Arguments are validated already
       // Get the value from stack and then pop it
       popstk(slice_inx(vars,inx).du64);
-    } else if(str_cmp(op.name, "global.get") == 0){
+    } else if(op.id == OPCODE_GLOBAL_GET){
+      //} else if(str_cmp(op.name, "global.get") == 0){
       // TODO:: Find if there is some better way of validating types
       i++; // maybe verify that its not ended yet ??
       u64 inx;
@@ -484,7 +491,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       }
       // Arguments are validated already
       pushstk(slice_inx(cxt->globals, inx).du64);
-    } else if (str_cmp(op.name, "global.set") == 0){
+    }else if(op.id == OPCODE_GLOBAL_SET){
+      //} else if (str_cmp(op.name, "global.set") == 0){
       // TODO:: Find if theres some better way of validating types
       i++; // maybe verify that its not ended yet ??
       u64 inx;
@@ -505,7 +513,7 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       // Get the value from stack and then pop it
       popstk(slice_inx(cxt->globals,inx).du64);
     //} else if (str_cmp(op.name, "i32.const") == 0){
-    } else if (op.id == OPCODE_I32_CONST){    
+    } else if (op.id == OPCODE_I32_CONST){
       i++; // maybe verify that its not ended yet ??
       s64 v;
       if(!parse_as_s64(slice_inx(opcodes, i).name, &v)){
@@ -517,7 +525,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       Wasm_Data p = {0};
       p.di32 = v;
       pushstk(p.du64);
-    } else if (str_cmp(op.name, "i64.const") == 0){
+    } else if(op.id == OPCODE_I64_CONST){
+      //} else if (str_cmp(op.name, "i64.const") == 0){
       i++; // maybe verify that its not ended yet ??
       s64 v;
       if(!parse_as_s64(slice_inx(opcodes, i).name, &v)){
@@ -542,6 +551,391 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       Wasm_Data p = {0};
       p.df64 = v;
       pushstk(p.du64);
+    } else if(op.id == OPCODE_MEMORY_FILL){
+      //} else if (str_cmp(op.name, "memory.fill") == 0){
+      Wasm_Data ptr = {0}, ch = {0}, len = {0};
+      popstk(len.du64);
+      popstk(ch.du64);
+      popstk(ptr.du64);
+
+      //printf("$$$$$$$ Filling the memory at %x with %d for %d\n",
+      //ptr.di32, ch.di32, len.di32);
+
+      memory_rgn_memset(mem, ptr.di32, len.di32, ch.di32);
+    } else if(op.id == OPCODE_MEMORY_COPY){
+      //} else if (str_cmp(op.name, "memory.copy") == 0){
+      // args: dst, src, size, no return values
+      Wasm_Data len={0}, src={0}, dst={0};
+      popstk(len.du64);
+      popstk(src.du64);
+      popstk(dst.du64);
+
+      // Since the memory regions can overlap, doing staging buffer method
+      u8_Slice tmp_buff = SLICE_ALLOC(allocr, u8, len.di32);
+      if(!tmp_buff.data){
+	fprintf(stderr, "memory allocation error");
+	return 0;
+      }
+
+      if(!memory_rgn_read(&cxt->mem, src.di32, tmp_buff.count, tmp_buff.data)){
+	// TODO:: Memory leak
+	fprintf(stderr, "memory allocation error");
+	return 0;
+      }
+      if(!memory_rgn_write(&cxt->mem, dst.di32, tmp_buff.count, tmp_buff.data)){
+	// TODO:: Memory leak
+	fprintf(stderr, "memory allocation error");
+	return 0;
+      }
+      SLICE_FREE(allocr, tmp_buff);
+    } else if(op.id == OPCODE_F64_CONVERT_I32_S){
+      //} else if (str_cmp(op.name, "f64.convert_i32_s") == 0){
+      Wasm_Data p0 = {0}, r = {0};
+      popstk(p0.du64);
+      r.df64 = p0.di32;
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_I32_SUB){
+      //} else if (str_cmp(op.name, "i32.sub") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 - p0.di32;
+      pushstk(r.du64);
+      //} else if (str_cmp(op.name, "i32.add") == 0){
+    } else if (op.id == OPCODE_I32_ADD){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 + p0.di32;
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_F64_ADD){
+      //} else if (str_cmp(op.name, "f64.add") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.df64 = p1.df64 + p0.df64;
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_F64_NEG){
+      //} else if (str_cmp(op.name, "f64.neg") == 0){
+      Wasm_Data p0 = {0}, r = {0};
+      popstk(p0.du64);
+      r.df64 = -p0.df64;
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_I32_SHL){
+      //} else if (str_cmp(op.name, "i32.shl") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 << p0.di32; // TODO:: Find out if the expected behavior matches
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_I32_SHR_S){
+      //} else if (str_cmp(op.name, "i32.shr_s") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 >> p0.di32; // TODO:: Find out if the expected behavior matches
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_I32_MUL){
+    //} else if (str_cmp(op.name, "i32.mul") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 * p0.di32;
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_I32_AND){
+      //} else if (str_cmp(op.name, "i32.and") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 & p0.di32;
+      pushstk(r.du64);
+    }  else if(op.id == OPCODE_F64_DIV){
+      //} else if (str_cmp(op.name, "f64.div") == 0){
+      Wasm_Data p_divr = {0}, p_divd = {0}, r = {0};
+      popstk(p_divr.du64); popstk(p_divd.du64);
+      // For floating points, div by 0 is not a problem
+      r.df64 = p_divd.df64 / p_divr.df64;
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_F64_LT){
+      //} else if (str_cmp(op.name, "f64.lt") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.df64 < p0.df64;
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_I32_NE){
+      //} else if (str_cmp(op.name, "i32.ne") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 != p0.di32;
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_I32_EQ){
+      //} else if (str_cmp(op.name, "i32.eq") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 == p0.di32;
+      pushstk(r.du64);
+    } else if(op.id == OPCODE_SELECT){
+      //} else if (str_cmp(op.name, "select") == 0){
+      Wasm_Data comp = {0}, val2 = {0};
+      popstk(comp.du64); popstk(val2.du64);
+      if(comp.di32==0) slice_last(*stk) = val2.du64;
+    } else if(op.id == OPCODE_BLOCK){
+      //} else if (str_cmp(op.name, "block") == 0){
+      // TODO:: It seems that it also takes in 'blocktype' as another argument
+      s64 end = find_end_block(opcodes, i);
+      if(end < 0){
+	fprintf(stderr, "Unmatched block found for opcode %zu\n", i);
+	return 0;
+      }
+      u64 pcnt = 0;
+      u64 retcnt = 0;
+      for(int it = 1; it < 3; it++){
+	if((i+it)>=opcodes.count) break;
+	const Str v = slice_inx(opcodes, i+it).name;
+	if(match_str_prefix(v, "param")){
+	  pcnt = func_param_res_count(v);
+	}else if(match_str_prefix(v, "result")){
+	  retcnt = func_param_res_count(v);
+	}else{
+	  // TODO:: Support type indices also
+	  break;
+	}
+      }
+      if(pcnt) i++; if(retcnt) i++;
+      pushblk_stk(visit_new_blk(stk, end, pcnt, retcnt));
+    } else if(op.id == OPCODE_LOOP){
+      //else if (str_cmp(op.name, "loop") == 0){
+      // TODO:: Figure out how loops param work actually 
+      u64 pcnt = 0;
+      u64 retcnt = 0;
+      for(int it = 1; it < 3; it++){
+	if((i+it)>=opcodes.count) break;
+	const Str v = slice_inx(opcodes, i+it).name;
+	if(match_str_prefix(v, "param")){
+	  pcnt = func_param_res_count(v);
+	}else if(match_str_prefix(v, "result")){
+	  retcnt = func_param_res_count(v);
+	}else{
+	  // TODO:: Support type indices also
+	  break;
+	}
+      }
+      if(pcnt) i++; if(retcnt) i++;
+      pushblk_stk(visit_new_blk(stk, i, pcnt, retcnt));
+    } else if(op.id == OPCODE_IF){
+      //else if (str_cmp(op.name, "if") == 0){
+      
+      // TODO:: It seems that it also takes in 'blocktype' as another argument
+      Wasm_Data comp;
+      popstk(comp.du64);
+
+      u64 pcnt = 0;
+      u64 retcnt = 0;
+      for(int it = 1; it < 3; it++){
+	if((i+it)>=opcodes.count) break;
+	const Str v = slice_inx(opcodes, i+it).name;
+	if(match_str_prefix(v, "param")){
+	  pcnt = func_param_res_count(v);
+	}else if(match_str_prefix(v, "result")){
+	  retcnt = func_param_res_count(v);
+	}else{
+	  // TODO:: Support type indices also
+	  break;
+	}
+      }
+
+
+      // Find the end of the block first
+      const s64 end1 = find_end_block(opcodes, i);
+      if(end1 < 0){
+	fprintf(stderr, "Unmatched block found for opcode(1) %zu(%.*s)\n",
+		i, str_print(slice_inx(opcodes, i).name));
+	return 0;
+      }
+
+      // For != 0 condition, continue but skip to the 'end'
+      // For == 0 condition, if there is 'else' block, continue to that
+      //                     else, go to 'end' directly
+      s64 end2 = end1;
+      //if(str_cmp(slice_inx(opcodes, end1).name, "else") == 0){
+      if(slice_inx(opcodes, end1).id == OPCODE_ELSE){
+	end2 = find_end_block(opcodes, end1);
+	if(end2 < 0){
+	  fprintf(stderr, "Unmatched block found for opcode(2) %zu(%.*s)\n",
+		  end1, str_print(slice_inx(opcodes, i).name));
+	  return 0;
+	}
+      }
+
+      if(pcnt) i++; if(retcnt) i++;
+      if(comp.di32 != 0){
+	// Execute if block, after jump to 'end2'
+	pushblk_stk(visit_new_blk(stk, end2, pcnt, retcnt));
+      } else if(end1 == end2) {
+	// Directly jump past the 'end' 
+	i = end1;
+      } else {
+	// Jump to the 'end1', set label to 'end2'
+	pushblk_stk(visit_new_blk(stk, end2, pcnt, retcnt));
+	i = end1;
+      }
+    } else if(op.id == OPCODE_ELSE){
+      //} else if (str_cmp(op.name, "else") == 0){
+      // TODO:: Always synchronize the behavior with the if block
+      // else when encountered normally, should indicate the end of a 'if' part
+      //  so, simply behave as a break opcode for the top block marker
+      u64 v;
+      popblk_stk(v);
+      i = break_old_blk(stk, v);
+    } else if (match_str_prefix(op.name, cstr_to_str("br"))) {
+      // The first argument is the number of labels(blocks) to pop
+      i++; // maybe verify that its not ended yet ??
+
+      // Test against various br types
+      bool to_jmp = 0;
+      if (op.id == OPCODE_BR){
+	//if (str_cmp(op.name, "br") == 0){
+	to_jmp = true;
+      } else if (op.id == OPCODE_BR_IF){
+	//} else if(str_cmp(op.name, "br_if")==0){
+	Wasm_Data comp;
+	popstk(comp.du64);
+	if(comp.di32!=0) to_jmp=true;
+      }
+      
+      if(to_jmp){
+	// Simply jump to the label, and pop upto before the label
+	// If 'loop' type, also push the label again
+
+	u64 v;
+	if(!parse_as_u64(slice_inx(opcodes, i).name, &v)){
+	  // TODO:: Also print location of source code
+	  fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+		  i, str_print(slice_inx(opcodes, i).name));
+	  return 0;
+	}
+
+	if(v >= blk_stk->count){
+	  fprintf(stderr, "Expected to break out of %zu-th block, when only %zu are present\n", v+1, blk_stk->count);
+	  return 0;	  
+	}
+
+	u64 label = slice_inx(*blk_stk, blk_stk->count-v-1);
+	i = break_old_blk(stk, label);
+	// Now do the jump operation
+	if(!pop_u64_darray(blk_stk, v+1)){
+	  fprintf(stderr, "Couldnt pop from block stack\n");
+	  return 0;
+	}
+
+	// TODO:: See if break operations can be done by other instruction types
+	const Opcode label_op = slice_inx(opcodes, i);
+	// For 'loop' type blocks, you need to re-push the loop index
+	if (label_op.id == OPCODE_LOOP){
+	  //if(str_cmp(label_op, "loop") == 0){
+	  // TODO:: Figure out how the parameters work here with loops
+	  u64 pcnt = 0;
+	  u64 retcnt = 0;
+	  for(int it = 0; it < 2; it++){
+	    if((i+it)>=opcodes.count) break;
+	    const Str v = slice_inx(opcodes, i+it).name;
+	    if(match_str_prefix(v, "param")){
+	      pcnt = func_param_res_count(v);
+	    }else if(match_str_prefix(v, "result")){
+	      retcnt = func_param_res_count(v);
+	    }else{
+	      // TODO:: Support type indices also
+	      break;
+	    }
+	  }
+	  if(pcnt) i++; if(retcnt) i++;
+	  pushblk_stk(visit_new_blk(stk, i, pcnt, retcnt));
+	} 
+      }
+    } else if(op.id == OPCODE_END){
+      //} else if (str_cmp(op.name, "end") == 0){
+      // Might need to pop from the stack
+      u64 label;
+      popblk_stk(label);
+      (void)break_old_blk(stk, label);
+    } else if(op.id == OPCODE_CALL){
+      //} else if (str_cmp(op.name, "call") == 0){
+      // The next argument is the function index
+      i++; // maybe verify that its not ended yet ??
+      u64 finx;
+      if(!parse_as_u64(slice_inx(opcodes, i).name, &finx)){
+	// TODO:: Also print location of source code
+	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
+		i, str_print(slice_inx(opcodes, i).name));
+	return 0;
+      }
+      // Call the function
+      const u64 calld_cyc = exec_wasm_fxn(allocr, cxt, finx);
+      if(calld_cyc == 0){
+	fprintf(stderr, "Failure in calling the function at %zu\n", finx);
+	return 0;
+      }
+      cycles += calld_cyc;
+      trace = cxt->trace; // Some fxns can change state of tracing
+      trace_vars = cxt->trace_vars; // Some fxns can change state of tracing
+    } else if (str_cmp(op.name, "i32.xor") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = p1.di32 ^ p0.di32; // TODO:: Find out if the expected behavior matches
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.div_u") == 0){
+      Wasm_Data p_divr = {0}, p_divd = {0}, r = {0};
+      popstk(p_divr.du64); popstk(p_divd.du64);
+      // TODO:: Find out more about these traps
+      if(p_divr.di32 == 0) {
+	fprintf(stderr, "Division by 0 attempted\n");
+	return 0;
+      }
+      // TODO:: Figure out what the deal with '_u' is actually
+      r.di32 = (s32)((u32)p_divd.di32 / (u32)p_divr.di32);
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.gt_s") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = (s32)(p1.di32 > p0.di32);
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.gt_u") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      // TODO:: Need to ensure that this is alright
+      r.di32 = (s32)((u32)p1.di32 > (u32)p0.di32);
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.ge_s") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = (s32)(p1.di32 >= p0.di32);
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.ge_u") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      // TODO:: Need to ensure that this is alright
+      r.di32 = (s32)((u32)p1.di32 >= (u32)p0.di32);
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.lt_s") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = (s32)(p1.di32 < p0.di32);
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.lt_u") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      // TODO:: Need to ensure that this is alright
+      r.di32 = (s32)((u32)p1.di32 < (u32)p0.di32);
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.le_s") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      r.di32 = (s32)(p1.di32 <= p0.di32);
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.le_u") == 0){
+      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
+      popstk(p0.du64); popstk(p1.du64);
+      // TODO:: Need to ensure that this is alright
+      r.di32 = (s32)((u32)p1.di32 <= (u32)p0.di32);
+      pushstk(r.du64);
+    } else if (str_cmp(op.name, "i32.eqz") == 0){
+      Wasm_Data p = {0},  r = {0};
+      popstk(p.du64);
+      r.di32 = (s32)(p.di32 == 0);
+      pushstk(r.du64);
     } else if (match_str_suffix(op.name, cstr_to_str("load")) ||
 	       match_str_suffix(op.name, cstr_to_str("store"))||
 	       match_str_suffix(op.name, cstr_to_str("load8_u"))||
@@ -623,379 +1017,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 	}
 	(void)memory_rgn_write(mem, offset, sz_dt, pdata);
       }
-    } else if (str_cmp(op.name, "memory.fill") == 0){
-      Wasm_Data ptr = {0}, ch = {0}, len = {0};
-      popstk(len.du64);
-      popstk(ch.du64);
-      popstk(ptr.du64);
-
-      //printf("$$$$$$$ Filling the memory at %x with %d for %d\n",
-      //ptr.di32, ch.di32, len.di32);
-
-      memory_rgn_memset(mem, ptr.di32, len.di32, ch.di32);
-    } else if (str_cmp(op.name, "memory.copy") == 0){
-      // args: dst, src, size, no return values
-      Wasm_Data len={0}, src={0}, dst={0};
-      popstk(len.du64);
-      popstk(src.du64);
-      popstk(dst.du64);
-
-      // Since the memory regions can overlap, doing staging buffer method
-      u8_Slice tmp_buff = SLICE_ALLOC(allocr, u8, len.di32);
-      if(!tmp_buff.data){
-	fprintf(stderr, "memory allocation error");
-	return 0;
-      }
-
-      if(!memory_rgn_read(&cxt->mem, src.di32, tmp_buff.count, tmp_buff.data)){
-	// TODO:: Memory leak
-	fprintf(stderr, "memory allocation error");
-	return 0;
-      }
-      if(!memory_rgn_write(&cxt->mem, dst.di32, tmp_buff.count, tmp_buff.data)){
-	// TODO:: Memory leak
-	fprintf(stderr, "memory allocation error");
-	return 0;
-      }
-      SLICE_FREE(allocr, tmp_buff);
-    } else if(op.id == OPCODE_F64_CONVERT_I32_S){
-      //} else if (str_cmp(op.name, "f64.convert_i32_s") == 0){
-      Wasm_Data p0 = {0}, r = {0};
-      popstk(p0.du64);
-      r.df64 = p0.di32;
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.sub") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 - p0.di32;
-      pushstk(r.du64);
-      //} else if (str_cmp(op.name, "i32.add") == 0){
-    } else if (op.id == OPCODE_I32_ADD){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 + p0.di32;
-      pushstk(r.du64);
-    } else if(op.id == OPCODE_F64_ADD){
-      //} else if (str_cmp(op.name, "f64.add") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.df64 = p1.df64 + p0.df64;
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "f64.neg") == 0){
-      Wasm_Data p0 = {0}, r = {0};
-      popstk(p0.du64);
-      r.df64 = -p0.df64;
-      pushstk(r.du64);
-    } else if(op.id == OPCODE_I32_SHL){
-      //} else if (str_cmp(op.name, "i32.shl") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 << p0.di32; // TODO:: Find out if the expected behavior matches
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.shr_s") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 >> p0.di32; // TODO:: Find out if the expected behavior matches
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.xor") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 ^ p0.di32; // TODO:: Find out if the expected behavior matches
-      pushstk(r.du64);
-    } else if(op.id == OPCODE_I32_MUL){
-    //} else if (str_cmp(op.name, "i32.mul") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 * p0.di32;
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.and") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 & p0.di32;
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.div_u") == 0){
-      Wasm_Data p_divr = {0}, p_divd = {0}, r = {0};
-      popstk(p_divr.du64); popstk(p_divd.du64);
-      // TODO:: Find out more about these traps
-      if(p_divr.di32 == 0) {
-	fprintf(stderr, "Division by 0 attempted\n");
-	return 0;
-      }
-      // TODO:: Figure out what the deal with '_u' is actually
-      r.di32 = (s32)((u32)p_divd.di32 / (u32)p_divr.di32);
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "f64.div") == 0){
-      Wasm_Data p_divr = {0}, p_divd = {0}, r = {0};
-      popstk(p_divr.du64); popstk(p_divd.du64);
-      // For floating points, div by 0 is not a problem
-      r.df64 = p_divd.df64 / p_divr.df64;
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.gt_s") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = (s32)(p1.di32 > p0.di32);
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.gt_u") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      // TODO:: Need to ensure that this is alright
-      r.di32 = (s32)((u32)p1.di32 > (u32)p0.di32);
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.ge_s") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = (s32)(p1.di32 >= p0.di32);
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.ge_u") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      // TODO:: Need to ensure that this is alright
-      r.di32 = (s32)((u32)p1.di32 >= (u32)p0.di32);
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.lt_s") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = (s32)(p1.di32 < p0.di32);
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.lt_u") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      // TODO:: Need to ensure that this is alright
-      r.di32 = (s32)((u32)p1.di32 < (u32)p0.di32);
-      pushstk(r.du64);
-    } else if(op.id == OPCODE_F64_LT){
-      //} else if (str_cmp(op.name, "f64.lt") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.df64 < p0.df64;
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.le_s") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = (s32)(p1.di32 <= p0.di32);
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.le_u") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      // TODO:: Need to ensure that this is alright
-      r.di32 = (s32)((u32)p1.di32 <= (u32)p0.di32);
-      pushstk(r.du64);
-    } else if(op.id == OPCODE_I32_NE){
-      //} else if (str_cmp(op.name, "i32.ne") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 != p0.di32;
-      pushstk(r.du64);
-    } else if(op.id == OPCODE_I32_EQ){
-      //} else if (str_cmp(op.name, "i32.eq") == 0){
-      Wasm_Data p0 = {0}, p1 = {0}, r = {0};
-      popstk(p0.du64); popstk(p1.du64);
-      r.di32 = p1.di32 == p0.di32;
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "i32.eqz") == 0){
-      Wasm_Data p = {0},  r = {0};
-      popstk(p.du64);
-      r.di32 = (s32)(p.di32 == 0);
-      pushstk(r.du64);
-    } else if (str_cmp(op.name, "select") == 0){
-      Wasm_Data comp = {0}, val2 = {0};
-      popstk(comp.du64); popstk(val2.du64);
-      if(comp.di32==0) slice_last(*stk) = val2.du64;
     } else if (str_cmp(op.name, "drop") == 0){
       Wasm_Data v = {0};
       popstk(v.du64);
-    } else if (str_cmp(op.name, "block") == 0){
-      // TODO:: It seems that it also takes in 'blocktype' as another argument
-      s64 end = find_end_block(opcodes, i);
-      if(end < 0){
-	fprintf(stderr, "Unmatched block found for opcode %zu\n", i);
-	return 0;
-      }
-      u64 pcnt = 0;
-      u64 retcnt = 0;
-      for(int it = 1; it < 3; it++){
-	if((i+it)>=opcodes.count) break;
-	const Str v = slice_inx(opcodes, i+it).name;
-	if(match_str_prefix(v, "param")){
-	  pcnt = func_param_res_count(v);
-	}else if(match_str_prefix(v, "result")){
-	  retcnt = func_param_res_count(v);
-	}else{
-	  // TODO:: Support type indices also
-	  break;
-	}
-      }
-      if(pcnt) i++; if(retcnt) i++;
-      pushblk_stk(visit_new_blk(stk, end, pcnt, retcnt));
-    } else if (str_cmp(op.name, "loop") == 0){
-      // TODO:: Figure out how loops param work actually 
-      u64 pcnt = 0;
-      u64 retcnt = 0;
-      for(int it = 1; it < 3; it++){
-	if((i+it)>=opcodes.count) break;
-	const Str v = slice_inx(opcodes, i+it).name;
-	if(match_str_prefix(v, "param")){
-	  pcnt = func_param_res_count(v);
-	}else if(match_str_prefix(v, "result")){
-	  retcnt = func_param_res_count(v);
-	}else{
-	  // TODO:: Support type indices also
-	  break;
-	}
-      }
-      if(pcnt) i++; if(retcnt) i++;
-      pushblk_stk(visit_new_blk(stk, i, pcnt, retcnt));
-    } else if (str_cmp(op.name, "if") == 0){
-      
-      // TODO:: It seems that it also takes in 'blocktype' as another argument
-      Wasm_Data comp;
-      popstk(comp.du64);
-
-      u64 pcnt = 0;
-      u64 retcnt = 0;
-      for(int it = 1; it < 3; it++){
-	if((i+it)>=opcodes.count) break;
-	const Str v = slice_inx(opcodes, i+it).name;
-	if(match_str_prefix(v, "param")){
-	  pcnt = func_param_res_count(v);
-	}else if(match_str_prefix(v, "result")){
-	  retcnt = func_param_res_count(v);
-	}else{
-	  // TODO:: Support type indices also
-	  break;
-	}
-      }
-
-
-      // Find the end of the block first
-      const s64 end1 = find_end_block(opcodes, i);
-      if(end1 < 0){
-	fprintf(stderr, "Unmatched block found for opcode(1) %zu(%.*s)\n",
-		i, str_print(slice_inx(opcodes, i).name));
-	return 0;
-      }
-
-      // For != 0 condition, continue but skip to the 'end'
-      // For == 0 condition, if there is 'else' block, continue to that
-      //                     else, go to 'end' directly
-      s64 end2 = end1;
-      if(str_cmp(slice_inx(opcodes, end1).name, "else") == 0){
-	end2 = find_end_block(opcodes, end1);
-	if(end2 < 0){
-	  fprintf(stderr, "Unmatched block found for opcode(2) %zu(%.*s)\n",
-		  end1, str_print(slice_inx(opcodes, i).name));
-	  return 0;
-	}
-      }
-
-      if(pcnt) i++; if(retcnt) i++;
-      if(comp.di32 != 0){
-	// Execute if block, after jump to 'end2'
-	pushblk_stk(visit_new_blk(stk, end2, pcnt, retcnt));
-      } else if(end1 == end2) {
-	// Directly jump past the 'end' 
-	i = end1;
-      } else {
-	// Jump to the 'end1', set label to 'end2'
-	pushblk_stk(visit_new_blk(stk, end2, pcnt, retcnt));
-	i = end1;
-      }
-    } else if (str_cmp(op.name, "else") == 0){
-      // TODO:: Always synchronize the behavior with the if block
-      // else when encountered normally, should indicate the end of a 'if' part
-      //  so, simply behave as a break opcode for the top block marker
-      u64 v;
-      popblk_stk(v);
-      i = break_old_blk(stk, v);
-    } else if (match_str_prefix(op.name, cstr_to_str("br"))) {
-      // The first argument is the number of labels(blocks) to pop
-      i++; // maybe verify that its not ended yet ??
-
-      // Test against various br types
-      bool to_jmp = 0;
-      if (op.id == OPCODE_BR){
-	//if (str_cmp(op.name, "br") == 0){
-	to_jmp = true;
-      } else if (op.id == OPCODE_BR_IF){
-	//} else if(str_cmp(op.name, "br_if")==0){
-	Wasm_Data comp;
-	popstk(comp.du64);
-	if(comp.di32!=0) to_jmp=true;
-      }
-      
-      if(to_jmp){
-	// Simply jump to the label, and pop upto before the label
-	// If 'loop' type, also push the label again
-
-	u64 v;
-	if(!parse_as_u64(slice_inx(opcodes, i).name, &v)){
-	  // TODO:: Also print location of source code
-	  fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
-		  i, str_print(slice_inx(opcodes, i).name));
-	  return 0;
-	}
-
-	if(v >= blk_stk->count){
-	  fprintf(stderr, "Expected to break out of %zu-th block, when only %zu are present\n", v+1, blk_stk->count);
-	  return 0;	  
-	}
-
-	u64 label = slice_inx(*blk_stk, blk_stk->count-v-1);
-	i = break_old_blk(stk, label);
-	// Now do the jump operation
-	if(!pop_u64_darray(blk_stk, v+1)){
-	  fprintf(stderr, "Couldnt pop from block stack\n");
-	  return 0;
-	}
-
-	// TODO:: See if break operations can be done by other instruction types
-	const Opcode label_op = slice_inx(opcodes, i);
-	// For 'loop' type blocks, you need to re-push the loop index
-	if (label_op.id == OPCODE_LOOP){
-	  //if(str_cmp(label_op, "loop") == 0){
-	  // TODO:: Figure out how the parameters work here with loops
-	  u64 pcnt = 0;
-	  u64 retcnt = 0;
-	  for(int it = 0; it < 2; it++){
-	    if((i+it)>=opcodes.count) break;
-	    const Str v = slice_inx(opcodes, i+it).name;
-	    if(match_str_prefix(v, "param")){
-	      pcnt = func_param_res_count(v);
-	    }else if(match_str_prefix(v, "result")){
-	      retcnt = func_param_res_count(v);
-	    }else{
-	      // TODO:: Support type indices also
-	      break;
-	    }
-	  }
-	  if(pcnt) i++; if(retcnt) i++;
-	  pushblk_stk(visit_new_blk(stk, i, pcnt, retcnt));
-	} 
-      }
-    } else if (str_cmp(op.name, "end") == 0){
-      // Might need to pop from the stack
-      u64 label;
-      popblk_stk(label);
-      (void)break_old_blk(stk, label);
-    } else if (str_cmp(op.name, "call") == 0){
-      // The next argument is the function index
-      i++; // maybe verify that its not ended yet ??
-      u64 finx;
-      if(!parse_as_u64(slice_inx(opcodes, i).name, &finx)){
-	// TODO:: Also print location of source code
-	fprintf(stderr, "Expected %zu-th opcode to be index, found `%.*s`\n",
-		i, str_print(slice_inx(opcodes, i).name));
-	return 0;
-      }
-      // Call the function
-      const u64 calld_cyc = exec_wasm_fxn(allocr, cxt, finx);
-      if(calld_cyc == 0){
-	fprintf(stderr, "Failure in calling the function at %zu\n", finx);
-	return 0;
-      }
-      cycles += calld_cyc;
-      trace = cxt->trace; // Some fxns can change state of tracing
-      trace_vars = cxt->trace_vars; // Some fxns can change state of tracing
     } else if (str_cmp(op.name, "return") == 0){
       break; // Maybe there is a better solution
     } else {
