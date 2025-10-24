@@ -9,7 +9,7 @@
 bool parse_as_type_index(Parse_Node* typ_idx, u32* out_idx){
   // There must be exactly 1 child
   if(!typ_idx || typ_idx->children.count != 1) return false;
-  if(str_cstr_cmp(typ_idx->data, "type") != 0) return false;
+  if(str_cmp(typ_idx->data, "type") != 0) return false;
   // Verify that the node is with one leaf 
   Parse_Node* child = typ_idx->children.data[0];
   if(!child || child->children.count != 0) return false;

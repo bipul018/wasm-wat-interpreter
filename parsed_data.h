@@ -26,7 +26,7 @@ DEF_SLICE(Data);
 
 bool parse_data(Alloc_Interface allocr, Parse_Node* root, Data* dat){
   if(!root || !dat || !root->data.data) return false;
-  if(str_cstr_cmp(root->data, "data") != 0) return false;
+  if(str_cmp(root->data, "data") != 0) return false;
   dat->identifier = root->data;
 
   // Get a modifiable slice, they will be resliced to be consumed

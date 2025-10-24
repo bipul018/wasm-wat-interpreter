@@ -151,9 +151,9 @@ bool memory_rgn_ensure(Memory_Region* mem, size_t off, size_t size){
   return true;
 }
 
-//bool memory_rgn_read(Memory_Region* mem, size_t off, size_t size, void* out){
-PROFILABLE_FXN(bool, memory_rgn_read, (Memory_Region*, mem), (size_t, off),
-	       (size_t, size), (void*, out)){
+bool memory_rgn_read(Memory_Region* mem, size_t off, size_t size, void* out){
+//PROFILABLE_FXN(bool, memory_rgn_read, (Memory_Region*, mem), (size_t, off),
+//	       (size_t, size), (void*, out)){
   // First ensure that those memory region exist
   // TODO:: Assert false or do something else maybe?
   if(!out || !memory_rgn_ensure(mem, off, size)) return false;
@@ -167,9 +167,9 @@ PROFILABLE_FXN(bool, memory_rgn_read, (Memory_Region*, mem), (size_t, off),
   }
   return true;
 }
-//bool memory_rgn_write(Memory_Region* mem, size_t off, size_t size, const void* in){
-PROFILABLE_FXN(bool, memory_rgn_write, (Memory_Region*, mem), (size_t, off),
-	       (size_t, size), (const void*, in)){
+bool memory_rgn_write(Memory_Region* mem, size_t off, size_t size, const void* in){
+//PROFILABLE_FXN(bool, memory_rgn_write, (Memory_Region*, mem), (size_t, off),
+//	       (size_t, size), (const void*, in)){
   // First ensure that those memory region exist
   // TODO:: Assert false or do something else maybe?
   if(!in || !memory_rgn_ensure(mem, off, size)) return false;

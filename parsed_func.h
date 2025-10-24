@@ -54,7 +54,7 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
   //        type definition can also reuse the logic for parsing
   // Parse the parameter list
   if(children.count != 0 &&
-     str_cstr_cmp(slice_first(children)->data, "param") == 0){
+     str_cmp(slice_first(children)->data, "param") == 0){
     Parse_Node* param_node = slice_first(children);
     for_slice(param_node->children, i){
       Parse_Node* ch = slice_inx(param_node->children, i);
@@ -74,7 +74,7 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
 
   // Now parse the return type
   if(children.count != 0 &&
-     str_cstr_cmp(slice_first(children)->data, "result") == 0){
+     str_cmp(slice_first(children)->data, "result") == 0){
     // TODO:: find if return type can have multiple values
     Parse_Node* param_node = slice_first(children);
     if(param_node->children.count != 1){
@@ -94,7 +94,7 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
 
   // Parse the local vars, they are also optional
   if(children.count != 0 &&
-     str_cstr_cmp(slice_first(children)->data, "local") == 0){
+     str_cmp(slice_first(children)->data, "local") == 0){
     Parse_Node* param_node = slice_first(children);
     for_slice(param_node->children, i){
       Parse_Node* ch = slice_inx(param_node->children, i);
@@ -120,8 +120,8 @@ bool parse_func(Alloc_Interface allocr, Parse_Node* root, Func* func){
         // Check case for (result <> <>) and (param <> <>)
         // In this case, somehow find the whole of the string and do
         // (Need to be resolved someday properly)
-        if(str_cstr_cmp(child->data, "result") == 0 ||
-           str_cstr_cmp(child->data, "param") == 0){
+        if(str_cmp(child->data, "result") == 0 ||
+           str_cmp(child->data, "param") == 0){
           Str d = child->data;
           for_slice(child->children, i){
             Str dc = slice_inx(child->children, i)->data;

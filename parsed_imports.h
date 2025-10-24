@@ -28,7 +28,7 @@ DEF_DARRAY(Import, 1);
 
 bool parse_import(Alloc_Interface allocr, Parse_Node* root, Import* impt){
   if(!root || !impt || !root->data.data) return false;
-  if(str_cstr_cmp(root->data, "import") != 0) return false;
+  if(str_cmp(root->data, "import") != 0) return false;
   impt->identifier = root->data;
 
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);

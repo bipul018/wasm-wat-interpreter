@@ -16,7 +16,7 @@ DEF_DARRAY(Type, 1);
 DEF_SLICE(Type);
 bool parse_type(Alloc_Interface allocr, Parse_Node* root, Type* typ){
   if(!root || !typ || !root->data.data) return false;
-  if(str_cstr_cmp(root->data, "type") != 0) return false;
+  if(str_cmp(root->data, "type") != 0) return false;
   typ->identifier = root->data;
 
   // Get a modifiable slice, they will be resliced to be consumed

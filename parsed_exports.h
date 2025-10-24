@@ -25,7 +25,7 @@ DEF_DARRAY(Export, 1);
 
 bool parse_export(Alloc_Interface allocr, Parse_Node* root, Export* exprt){
   if(!root || !exprt || !root->data.data) return false;
-  if(str_cstr_cmp(root->data, "export") != 0) return false;
+  if(str_cmp(root->data, "export") != 0) return false;
   exprt->identifier = root->data;
 
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
@@ -65,8 +65,8 @@ bool parse_export(Alloc_Interface allocr, Parse_Node* root, Export* exprt){
     exprt->export_idx = v;
 
     exprt->export_type_name = loc->data;
-    if(str_cstr_cmp(loc->data, "memory") == 0) exprt->export_type = MEMORY_EXPORT_TYPE;
-    else if(str_cstr_cmp(loc->data, "func") == 0) exprt->export_type = FUNCTION_EXPORT_TYPE;
+    if(str_cmp(loc->data, "memory") == 0) exprt->export_type = MEMORY_EXPORT_TYPE;
+    else if(str_cmp(loc->data, "func") == 0) exprt->export_type = FUNCTION_EXPORT_TYPE;
     else exprt->export_type = UNKNOWN_EXPORT_TYPE;
 
     slice_shrink_front(children, 1);

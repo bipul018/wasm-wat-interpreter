@@ -21,7 +21,7 @@ DEF_DARRAY(Global, 1);
 
 bool parse_global(Alloc_Interface allocr, Parse_Node* root, Global* glbl){
   if(!root || !glbl || !root->data.data) return false;
-  if(str_cstr_cmp(root->data, "global") != 0) return false;
+  if(str_cmp(root->data, "global") != 0) return false;
   glbl->identifier = root->data;
 
   Parse_Node_Ptr_Darray unknowns = init_Parse_Node_Ptr_darray(allocr);
@@ -39,7 +39,7 @@ bool parse_global(Alloc_Interface allocr, Parse_Node* root, Global* glbl){
     glbl->is_mut = false;
     Parse_Node* node = slice_first(children);
     if(node->children.count == 1){
-      if(cstr_str_cmp("mut", node->data) == 0){
+      if(str_cmp("mut", node->data) == 0){
 	node = slice_first(node->children);
 	glbl->is_mut = true;
       }

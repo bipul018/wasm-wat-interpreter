@@ -39,7 +39,7 @@ int compare_type_idx(const void* a, const void* b, void* idx_offset){
 
 bool parse_module(Alloc_Interface allocr, Parse_Node* root, Module* mod){
   if(!root || !mod || !root->data.data) return false;
-  if(str_cstr_cmp(root->data, "module") != 0) return false;
+  if(str_cmp(root->data, "module") != 0) return false;
   mod->identifier = root->data;
 
   // Simply copy the entities if you can parse the entity

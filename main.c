@@ -55,8 +55,6 @@ int str_str_cmp(Str str1, Str str2){
 	    default: _Generic((arg2), Str: base_fxn##_c_s, default: base_fxn##_c_c))	\
    ((arg1),(arg2)))
 
-int str_cstr_cmp(Str str1, Cstr str2){ return str_str_cmp(str1,cstr_to_str(str2)); }
-int cstr_str_cmp(Cstr str1, Str str2){ return str_str_cmp(cstr_to_str(str1),str2); }
 DEF_STR_CSTR_FXN(str_str_cmp, int);
 #define str_cmp(a, b) DEF_STR_CSTR_GEN(str_str_cmp, a, b)
 
@@ -157,33 +155,34 @@ int main(void){
 
   // Measure the time taken
   timespec time_run = start_process_timer();
-  run_sample(allocr, &main_module, cstr_to_str(watfname));
+  for_range(int, i, 0, 3){
+    run_sample(allocr, &main_module, cstr_to_str(watfname));
+  }
   printf("Interpretation of program took %lf s to run \n", timer_sec(end_process_timer(&time_run)));
   free_parse_info(&parser);
 
-  double prog_time = timer_sec(end_process_timer(&time_whole));
-  printf("The whole program took %lf s to run \n", prog_time);
+  double prog_time = timer_milli(end_process_timer(&time_whole));
+  printf("The whole program took %lf s to run \n", prog_time/1000.0);
 
 
 #define print_profiling_results(item)					\
   do{									\
     printf("Profiling results for '"#item"': \n");			\
-    printf("    Total time spent: %lf s\n", GET_PROFILED_SUM(item));	\
+    printf("    Total time spent: %lf ms\n", GET_PROFILED_SUM(item));	\
     printf("    Total number of invocations: %zu\n", GET_PROFILED_COUNT(item));	\
     printf("    Absolute average : %lf\n",				\
 	   GET_PROFILED_SUM(item)/GET_PROFILED_COUNT(item));		\
     printf("    Percentage involvement: %.2lf %%\n",			\
-	   (GET_PROFILED_SUM(item) * 100.0)/				\
-	   prog_time);					\
-  }while(0);
+	   100.0 * (GET_PROFILED_SUM(item) / prog_time));		\
+      }while(0);
 
-  print_profiling_results(parse_brackets_);
-  print_profiling_results(print_to_str);
-  print_profiling_results(memory_rgn_read);
-  print_profiling_results(memory_rgn_write);
+  //print_profiling_results(parse_brackets_);
+  //print_profiling_results(print_to_str);
+  //print_profiling_results(memory_rgn_read);
+  //print_profiling_results(memory_rgn_write);
   //print_profiling_results(memory_rgn_ensure);
-  print_profiling_results(run_wasm_opcodes);
-  print_profiling_results(exec_wasm_fxn);
+  //print_profiling_results(run_wasm_opcodes);
+  //print_profiling_results(exec_wasm_fxn);
 
   //printf("Profiling results for 'str_slice': \n");
   //printf("    Total time spent: %lf\n", GET_PROFILED_SUM(str_slice));
