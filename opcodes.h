@@ -43,14 +43,30 @@
     X(OPCODE_I32_SUB, "i32.sub")			\
     X(OPCODE_I32_SHR_S, "i32.shr_s")
   
+// List of opcode/values 'groups' based on 'prefix'
+#define OPCODE_GROUP_LIST(X)			\
+  X(OPCODE_GRP_PARAM_LIST, "param")		\
+    X(OPCODE_GRP_RESULT_LIST, "result")		\
+    X(OPCODE_GRP_BREAK, "br")			\
+    X(OPCODE_GRP_MEM_OFFSET, "offset=")		\
+    X(OPCODE_GRP_MEM_ALIGN, "align=")		\
+    X(OPCODE_GRP_I32_RESULT, "i32.")		\
+    X(OPCODE_GRP_U32_RESULT, "u32.")		\
+    X(OPCODE_GRP_I64_RESULT, "i64.")		\
+    X(OPCODE_GRP_U64_RESULT, "u64.")		\
+    X(OPCODE_GRP_F32_RESULT, "f32.")		\
+    X(OPCODE_GRP_F64_RESULT, "f64.")
+    
 
-#define OPCODE_GET_ENUM(a, b) a, 
+#define OPCODE_GET_ENUM(a, b) a,
 
 typedef struct Opcode Opcode;
 struct Opcode {
   enum{
-    OPCODE_UNKNOWN,// To be used for all the unknown opcodes/literals
+    OPCODE_UNKNOWN = 0,// To be used for all the unknown opcodes/literals
     OPCODE_LIST(OPCODE_GET_ENUM) OPCODES_COUNT,
+
+    /// Additional information if not opcode
 
     // A 'hierarchy' of 'immediate operand types'
     //    compared by 'id' >= 'desired level'
@@ -58,6 +74,13 @@ struct Opcode {
     OPCODE_IM_IS_S64,
     OPCODE_IM_IS_U64,
   } id;
+
+  enum {
+    OPCODE_GROUP_UNSPECIFIED=0,
+    // Group tags for opcodes
+    // TODO:: Only supports prefix-based groups, figure out for others also
+    OPCODE_GROUP_LIST(OPCODE_GET_ENUM) OPCODES_GROUP_COUNT,
+  } pref_tag;
   Str name;
   u64 du64;
   s64 di64;
@@ -97,6 +120,17 @@ Opcode_Slice pre_process_opcodes(Alloc_Interface allocr, Str_Slice raw_opcodes){
 	op.id = OPCODE_IM_IS_F64;
       }
     }
+    // Try to acertain the group of opcode
+#define OPCODE_GRP_PROCESS_PREFIX(a, b)		\
+    if(match_str_prefix(raw_op, b)){		\
+      op.pref_tag = a;				\
+      goto end_of_scanning_opcode_group_pref;	\
+    }						\
+
+    //if(match_str_prefix(raw_op, "param")){ op.pref_tag = OPCODE_GRP_PARAM_LIST; break;}
+    OPCODE_GROUP_LIST(OPCODE_GRP_PROCESS_PREFIX);
+  end_of_scanning_opcode_group_pref:
+
     slice_inx(opcodes, i) = op;
   }
   //assert(false);
@@ -157,7 +191,8 @@ void dump_opcode_counts(Opcode_Count_Darray cntr){
   printf("\n------- Opcode call counts -------");
   for_slice(cntr, i){
     if((i % 3) == 0) printf("\n");
-    printf("%.*s->%d\t\t", str_print(cntr.data[i].op.name), cntr.data[i].count);
+    printf("%.*s[%d]->%d\t\t", str_print(cntr.data[i].op.name),
+	   cntr.data[i].op.pref_tag, cntr.data[i].count);
   }
   printf("\n----------------------------------\n");
   printf("******** %zu op with id was found*********\n", (size_t)op_with_id);
@@ -339,8 +374,9 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
   // Go through the opcodes?
   for_slice(opcodes, i){
 
+    //if(str_cmp("br_if", slice_inx(opcodes, i).name) == 0) cxt->step_into = true;
     //if(str_cmp("if", slice_inx(opcodes, i).name) == 0) cxt->step_into = true;
-    //if(str_cmp("i32.add", slice_inx(opcodes, i).name) == 0) cxt->step_into = true;
+    //if(str_cmp("f64.const", slice_inx(opcodes, i).name) == 0) cxt->step_into = true;
 
     // Step into mode, used to examine the opcodes and stuff
     if(cxt->step_into){
@@ -416,8 +452,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 
 	      printf(" <");
 	      for_range(size_t, i, begin, end)
-		printf("%.*s(%d)  ", str_print(slice_inx(opcodes, i).name),
-		       (int)slice_inx(opcodes, i).id);
+		printf("%.*s(%d)<%d>  ", str_print(slice_inx(opcodes, i).name),
+		       (int)slice_inx(opcodes, i).id, (int)slice_inx(opcodes, i).pref_tag);
 	      printf(">\n");
 	      break;
 	    }
@@ -730,11 +766,13 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       u64 retcnt = 0;
       for(int it = 1; it < 3; it++){
 	if((i+it)>=opcodes.count) break;
-	const Str v = slice_inx(opcodes, i+it).name;
-	if(match_str_prefix(v, "param")){
-	  pcnt = func_param_res_count(v);
-	}else if(match_str_prefix(v, "result")){
-	  retcnt = func_param_res_count(v);
+	const Opcode v = slice_inx(opcodes, i+it);
+	if(v.pref_tag == OPCODE_GRP_PARAM_LIST){
+	//if(match_str_prefix(v, "param")){
+	  pcnt = func_param_res_count(v.name);
+	}else if(v.pref_tag == OPCODE_GRP_RESULT_LIST){
+	  //}else if(match_str_prefix(v, "result")){
+	  retcnt = func_param_res_count(v.name);
 	}else{
 	  // TODO:: Support type indices also
 	  break;
@@ -749,11 +787,13 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       u64 retcnt = 0;
       for(int it = 1; it < 3; it++){
 	if((i+it)>=opcodes.count) break;
-	const Str v = slice_inx(opcodes, i+it).name;
-	if(match_str_prefix(v, "param")){
-	  pcnt = func_param_res_count(v);
-	}else if(match_str_prefix(v, "result")){
-	  retcnt = func_param_res_count(v);
+	const Opcode v = slice_inx(opcodes, i+it);
+	if(v.pref_tag == OPCODE_GRP_PARAM_LIST){
+	//if(match_str_prefix(v, "param")){
+	  pcnt = func_param_res_count(v.name);
+	}else if(v.pref_tag == OPCODE_GRP_RESULT_LIST){
+	  //}else if(match_str_prefix(v, "result")){
+	  retcnt = func_param_res_count(v.name);
 	}else{
 	  // TODO:: Support type indices also
 	  break;
@@ -772,11 +812,13 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       u64 retcnt = 0;
       for(int it = 1; it < 3; it++){
 	if((i+it)>=opcodes.count) break;
-	const Str v = slice_inx(opcodes, i+it).name;
-	if(match_str_prefix(v, "param")){
-	  pcnt = func_param_res_count(v);
-	}else if(match_str_prefix(v, "result")){
-	  retcnt = func_param_res_count(v);
+	const Opcode v = slice_inx(opcodes, i+it);
+	if(v.pref_tag == OPCODE_GRP_PARAM_LIST){
+	//if(match_str_prefix(v, "param")){
+	  pcnt = func_param_res_count(v.name);
+	}else if(v.pref_tag == OPCODE_GRP_RESULT_LIST){  
+	//}else if(match_str_prefix(v, "result")){
+	  retcnt = func_param_res_count(v.name);
 	}else{
 	  // TODO:: Support type indices also
 	  break;
@@ -826,7 +868,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       u64 v;
       popblk_stk(v);
       i = break_old_blk(stk, v);
-    } else if (match_str_prefix(op.name, cstr_to_str("br"))) {
+    } else if (op.pref_tag == OPCODE_GRP_BREAK){
+      //} else if (match_str_prefix(op.name, cstr_to_str("br"))) {
       // The first argument is the number of labels(blocks) to pop
       i++; // maybe verify that its not ended yet ??
 
@@ -877,11 +920,13 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 	  u64 retcnt = 0;
 	  for(int it = 0; it < 2; it++){
 	    if((i+it)>=opcodes.count) break;
-	    const Str v = slice_inx(opcodes, i+it).name;
-	    if(match_str_prefix(v, "param")){
-	      pcnt = func_param_res_count(v);
-	    }else if(match_str_prefix(v, "result")){
-	      retcnt = func_param_res_count(v);
+	    const Opcode v = slice_inx(opcodes, i+it);
+	    if(v.pref_tag == OPCODE_GRP_PARAM_LIST){
+	    //if(match_str_prefix(v, "param")){
+	      pcnt = func_param_res_count(v.name);
+	    }else if(v.pref_tag == OPCODE_GRP_RESULT_LIST){
+	    //}else if(match_str_prefix(v, "result")){
+	      retcnt = func_param_res_count(v.name);
 	    }else{
 	      // TODO:: Support type indices also
 	      break;
@@ -1005,8 +1050,10 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       // Do twice, once expecting offset=, another expecting alignment=
       for_range(size_t, ii, 0, 2){
 	if((i+1)<opcodes.count){
-	  Str maybearg = slice_inx(opcodes, i+1).name;
-	  if(match_str_prefix(maybearg, cstr_to_str("offset="))){
+	  const Opcode maybeop = slice_inx(opcodes, i+1);
+	  Str maybearg = maybeop.name;
+	  if(maybeop.pref_tag == OPCODE_GRP_MEM_OFFSET){
+	  //if(match_str_prefix(maybearg, cstr_to_str("offset="))){
 	    maybearg = str_slice(maybearg, strlen("offset="), maybearg.count);
 	    u64 off;
 	    if(!parse_as_u64(maybearg, &off)){
@@ -1017,7 +1064,8 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
 	    // Adding the constant offset 
 	    offset += off;
 	    i++;
-	  }else if(match_str_prefix(maybearg, cstr_to_str("align="))){
+	  }else if(maybeop.pref_tag == OPCODE_GRP_MEM_ALIGN){
+	  //}else if(match_str_prefix(maybearg, cstr_to_str("align="))){
 	    // TODO:: Someday care about alignment
 	    i++;
 	  }else {break;}
@@ -1025,19 +1073,20 @@ u64 run_wasm_opcodes(Alloc_Interface allocr, Exec_Context* cxt, const Opcode_Sli
       }
       void* pdata=nullptr;
       size_t sz_dt=0;
+      //if(match_str_prefix(op.name, prefix)){		
 #define fill_ptr_n_size(prefix, item)			\
       do{						\
-	if(match_str_prefix(op.name, prefix)){		\
+	if(op.pref_tag == OPCODE_GRP_##prefix##_RESULT){	\
 	  pdata = &val.item;				\
 	  sz_dt = sizeof(val.item);			\
 	}						\
       }while(0)
-      fill_ptr_n_size("i32", di32);
-      fill_ptr_n_size("u32", du32);
-      fill_ptr_n_size("i64", di64);
-      fill_ptr_n_size("u64", du64);
-      fill_ptr_n_size("f32", df32);
-      fill_ptr_n_size("f64", df64);
+      fill_ptr_n_size(I32, di32);
+      fill_ptr_n_size(U32, du32);
+      fill_ptr_n_size(I64, di64);
+      fill_ptr_n_size(U64, du64);
+      fill_ptr_n_size(F32, df32);
+      fill_ptr_n_size(F64, df64);
       // TODO:: Handle when none of the values match
       if(match_str_suffix(op.name, "8_u")||match_str_suffix(op.name, "8_s")||match_str_suffix(op.name, "8")){
 	sz_dt = 1;
